@@ -2,15 +2,15 @@ services:
   postgres:
     image: postgres:16-alpine
     environment:
-      POSTGRES_USER: karat
-      POSTGRES_PASSWORD: karat
-      POSTGRES_DB: karat
+      POSTGRES_USER: uplift
+      POSTGRES_PASSWORD: uplift
+      POSTGRES_DB: uplift
     ports:
       - "5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U karat"]
+      test: ["CMD-SHELL", "pg_isready -U uplift"]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -22,7 +22,7 @@ services:
     env_file:
       - .env
     environment:
-      DATABASE_URL: postgresql+psycopg://karat:karat@postgres:5432/karat
+      DATABASE_URL: postgresql+psycopg://uplift:uplift@postgres:5432/uplift
     ports:
       - "8000:8000"
     volumes:

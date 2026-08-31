@@ -1,4 +1,4 @@
-# Karat — Intelligent Payment Recovery
+# Uplift — Intelligent Payment Recovery
 
 AI-driven payment recovery: diagnose failed payments with an LLM, score retry
 uplift with a causal model, and let a deterministic policy engine decide

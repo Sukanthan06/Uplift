@@ -1,7 +1,7 @@
 [project]
-name = "karat-backend"
+name = "uplift-backend"
 version = "0.1.0"
-description = "Karat backend - AI-driven payment recovery"
+description = "Uplift backend - AI-driven payment recovery"
 requires-python = ">=3.11"
 dependencies = [
   "fastapi>=0.115",
