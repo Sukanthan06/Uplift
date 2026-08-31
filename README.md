@@ -9,7 +9,7 @@ Built for the Razorpay AI Buildathon, Track 03 (AI Revenue Recovery).
 
 ## Status
 
-Phase 1 (Foundation), Phase 2 (Evaluation harness), and Phase 3 (Uplift model) complete. Phase 4 (sensitivity sweep) next.
+Phase 1 (Foundation), Phase 2 (Evaluation harness), Phase 3 (Uplift model), and Phase 4 (Sensitivity sweep) complete. Phase 5 (Reconciler + Diagnoser + Policy + Action) next.
 
 ### Phase 2 results (honest, no ML yet)
 
@@ -38,10 +38,19 @@ T-learner (2 XGBoost models) trained on a chronological split (4,438 train / 1,1
 
 The learned model **ties, doesn't beat**, the hand-picked rule (−0.5%). `uplift@20% = 0.76` and a positive, monotonically-rising Qini curve show the model's ranking is genuinely informative — the likely explanation is that `rule_based`'s hand-coded routing already captures most of what ~4,400 training examples can teach a model, and 1,107 test attempts is a small sample for stable causal-effect estimation. Reported as-is per the project's non-negotiable: never tune the simulator to make the model win. See `docs/DECISIONS.md` and `docs/ASSUMPTIONS.md` ("Uplift model") for full methodology and honest discussion.
 
+### Phase 4 results (honest — sweep confirms Phase 3's diagnosis)
+
+`python -m ml.sensitivity_sweep` varies the four parameters CLAUDE.md names, in-memory on a smaller dataset (n=5,000/scenario) for turnaround speed. Plots saved to `backend/ml/output/sensitivity/` (gitignored).
+
+- **Retry cost and customer patience show zero effect** on the recovered-revenue margin — mathematically expected (cost never enters the recovered-INR calculation; patience decay only bites multi-retry policies, and both `rule_based` and `uplift_ranked` issue a single retry per attempt). Reported as-is, not swapped for a metric that would show movement.
+- **Outage frequency and base decline rate are the real story.** Across that grid, `uplift_ranked` never beats `rule_based` — but the gap shrinks sharply with more failure volume: −17% to −25% at half the default decline rate, narrowing to near-parity (−0.1% to −0.3% in several cells) near the default rate. This reframes Phase 3's result: the limiting factor looks like training data volume, not a structural flaw in the approach. Inference from the sweep, not verified at production scale.
+
+See `docs/DECISIONS.md` (Phase 4 entries) and `docs/DEMO_SCRIPT.md` for full discussion.
+
 ## Stack
 
 - Backend: FastAPI + Python 3.11, PostgreSQL, SQLAlchemy 2.0
-- ML: XGBoost + CausalML (T-learner uplift model)
+- ML: XGBoost (T-learner uplift model), Qini/uplift@k implemented manually (no causalml — unused, dropped)
 - LLM: Claude (Anthropic) for structured failure diagnosis
 - Frontend: Vite + React + TypeScript + Tailwind + Recharts
 
