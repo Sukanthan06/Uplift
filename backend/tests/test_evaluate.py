@@ -1,3 +1,5 @@
+from datetime import UTC, datetime
+
 from ml.baselines import RetryPlan, do_nothing, retry_3x, retry_once, rule_based
 from ml.evaluate import AttemptRecord, _sequential_outcome, score_policy
 
@@ -11,10 +13,16 @@ def _attempt(**overrides) -> AttemptRecord:
     defaults = dict(
         order_id="order_1",
         amount=1000.0,
+        method="upi",
+        issuer="HDFC Bank",
+        error_code="upi_technical_failure",
         cause_family="technical_bank_downtime",
+        created_at=datetime(2026, 1, 1, tzinfo=UTC),
         p_recover_unretried=0.05,
         p_recover_offsets={0: 0.85, 6: 0.85, 24: 0.85, 72: 0.85},
         actually_succeeded_silently=False,
+        assigned_arm="no_retry",
+        observed_outcome=False,
     )
     defaults.update(overrides)
     return AttemptRecord(**defaults)

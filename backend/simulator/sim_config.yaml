@@ -76,11 +76,14 @@ retry_offsets_hours: [0, 6, 24, 72]
 # that retry." Design decision (see docs/ASSUMPTIONS.md), not sourced.
 recovery_window_hours: 72
 
-# Historical/training-data treatment assignment: randomized, to avoid
-# confounding the Phase 3 T-learner. See docs/ASSUMPTIONS.md.
+# Historical/training-data treatment assignment: randomized uniformly across
+# 5 arms (no_retry, retry_0h, retry_6h, retry_24h, retry_72h) -- see
+# simulator/assignment.py -- to avoid confounding the Phase 3 T-learner
+# across both the retry/no-retry decision and retry timing. See
+# docs/ASSUMPTIONS.md.
 treatment_assignment:
   mechanism: "randomized"
-  probability: 0.5
+  arms: ["no_retry", "retry_0h", "retry_6h", "retry_24h", "retry_72h"]
 
 # Amount distribution (INR), lognormal. ILLUSTRATIVE -- chosen to put most
 # amounts in a plausible retail range with a long tail, not sourced.

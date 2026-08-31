@@ -40,6 +40,28 @@ Frozen 2026-08-31, Phase 2. For `taxonomy.TIMEOUT_AMBIGUOUS_CODES` only (`paymen
 
 This is additive to the Phase 1 freeze above, not a revision — everything already committed (the recovery curves, the 50k generated attempts) stays valid; this only adds one new hidden field, scoped to three specific codes.
 
+### (e) Addendum, Phase 3: 5-arm treatment assignment (retry timing)
+
+Frozen 2026-08-31, Phase 3. (c) above only randomized retry-vs-no-retry (2 arms), which is enough to train a causal model of *whether* to retry, but not *when* — there was never a logged experiment for "retry at +6h" vs "retry at +24h", so no data existed to learn timing without peeking at the hidden curve. `simulator/assignment.py` now randomizes uniformly across **5 arms**: `no_retry`, `retry_0h`, `retry_6h`, `retry_24h`, `retry_72h` (still a deterministic hash of `order_id`, salted `v2` to mark the mechanism change explicitly rather than silently reinterpreting old draws). Each failed attempt's single observed outcome is now drawn from whichever arm it landed in, using that arm's true probability from the same hidden recovery curve as before.
+
+This lets `ml/train_uplift.py` train a T-learner where the "treated" model takes offset as a feature (predicting `P(recover | X, offset)` for any of the 4 offsets) and the "control" model predicts `P(recover | X, no_retry)` — still two XGBoost models, per CLAUDE.md, just with the treated model covering the full timing menu instead of only "now". `uplift(now) = treated(X, 0) - control(X)`; `uplift(best) = max` over the 4 offsets.
+
+Additive, not a revision of (a)/(b)/(d) above — the recovery curves, decline taxonomy, and double-charge mechanism are unchanged. Only the *assignment* mechanism and the resulting `observed_outcome`/`assignment` fields in `ground_truth.jsonl` changed shape, and the 50k dataset was regenerated accordingly (exact per-attempt values differ from the Phase 1/2 runs; the distributional properties documented above — method mix, decline rates, recovery curves — do not).
+
+## Uplift model
+
+Frozen 2026-08-31, Phase 3. Implementation: `backend/ml/{features,train_uplift,evaluate}.py`, `backend/app/services/{scorer,scheduler}.py`.
+
+**T-learner**: two XGBoost classifiers. `control_model` predicts P(recover | X) trained on the `no_retry` arm's observed outcomes; `treated_model` predicts P(recover | X, offset_hours) trained on the pooled `retry_0h/6h/24h/72h` arms, with `offset_hours` as a feature. `uplift(X, offset) = treated(X, offset) - control(X)`. Both are plain XGBoost defaults (200 trees, depth 4, lr 0.1) — no hyperparameter search, given the timeline; a documented limitation, not an oversight.
+
+**Features** (`ml/features.py`): `amount`, `method`, `issuer`, `error_code`, `cause_family` (derived from `error_code` via `taxonomy.py`, same as the rule-based baseline), `hour_of_day`, `day_of_week`, plus `offset_hours` for the treated model only. `build_features()` asserts its input never carries a `ground_truth.jsonl` key — see the module docstring. Categorical columns use a *fixed* vocabulary (drawn from `sim_config.yaml`/`taxonomy.py`, not whatever appears in a given split) so encoding is identical at training and inference time.
+
+**Chronological split**: first 60 days train (4,438 failed attempts), next 15 days validation (1,148), final 15 days test (1,107) — held out completely from training, per CLAUDE.md non-negotiable #6.
+
+**Honest result, not spun**: at the same budget as `rule_based` on held-out test data (863 retries, ₹1,726 cost), `uplift_ranked` recovers ₹599,005 vs `rule_based`'s ₹602,287 — essentially tied, marginally behind. `uplift@20%` is 0.76 and the Qini curve is positive and rising throughout, meaning the model's *ranking* of who to retry is genuinely informative — it's just that `rule_based`'s hand-coded routing (skip hard declines, wait out outages, time insufficient-funds retries) already captures most of what's learnable from ~4,400 training examples, so the model doesn't clearly beat it at this budget on this test slice. The likely limiting factor is test-set size (1,107 attempts is small for stable causal-effect estimation) rather than a flaw in the approach — see `docs/DECISIONS.md`. This is reported as-is per CLAUDE.md non-negotiable #7: never tune the simulator to make the model win.
+
+**Budget-constrained ranking** (`score_uplift_policy` in `ml/evaluate.py`): every held-out attempt gets scored for uplift at each candidate offset (from the *model*, never the hidden curve); attempts are ranked by best predicted uplift descending; the top `budget` attempts with positive predicted uplift are retried at their predicted-best offset. The *actual* recovered value is then computed from the hidden ground-truth probability at that chosen offset, not the model's own belief — the model picks the action, ground truth grades it. This is the same principle Phase 2's baseline scoring already followed.
+
 ## Policy
 
 _TBD — Phase 5._
