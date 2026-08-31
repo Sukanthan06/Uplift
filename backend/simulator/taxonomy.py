@@ -329,6 +329,17 @@ DECLINE_TAXONOMY: tuple[DeclineCode, ...] = (
     ),
 )
 
+# Codes where the gateway genuinely could not confirm outcome (a timeout, not
+# a definite decline) -- the classic case CLAUDE.md non-negotiable #2 exists
+# for: the charge may have silently gone through despite the "failure". The
+# simulator uses this set to occasionally flip such an attempt to "actually
+# succeeded silently" in hidden ground truth, so evaluate.py's
+# double-charge-near-miss metric measures something that actually happened,
+# not a proxy. See docs/ASSUMPTIONS.md.
+TIMEOUT_AMBIGUOUS_CODES: frozenset[str] = frozenset(
+    {"payment_timed_out", "upi_timeout", "netbanking_session_timeout"}
+)
+
 
 def codes_for_method(method: str) -> tuple[DeclineCode, ...]:
     codes = tuple(c for c in DECLINE_TAXONOMY if c.method == method)

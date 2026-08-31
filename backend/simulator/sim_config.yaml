@@ -89,3 +89,13 @@ amount:
   sigma: 1.0
   min: 10
   max: 100000
+
+# For taxonomy.TIMEOUT_AMBIGUOUS_CODES only: the fraction of these attempts
+# that actually succeeded silently on the gateway side despite reporting
+# failure -- the real-world phenomenon CLAUDE.md non-negotiable #2
+# (reconcile before retry) exists to guard against. ILLUSTRATIVE.
+ambiguous_timeout_success_rate: 0.05
+
+# Phase 2 evaluation harness: illustrative marginal cost per retry API call.
+# Real gateway/infra costs per retry are proprietary. ILLUSTRATIVE.
+retry_cost_inr: 2.0

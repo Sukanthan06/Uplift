@@ -181,6 +181,15 @@ def generate(config: dict | None = None) -> list[GeneratedRow]:
         else:
             observed_outcome = rng.random() < p_unretried
 
+        # For timeout-type codes only: did this "failed" attempt actually
+        # succeed silently on the gateway side? A policy that retries one of
+        # these without reconciling first is a real double-charge near-miss,
+        # not a proxy metric -- see docs/ASSUMPTIONS.md.
+        actually_succeeded_silently = (
+            decline.code in taxonomy.TIMEOUT_AMBIGUOUS_CODES
+            and rng.random() < cfg["ambiguous_timeout_success_rate"]
+        )
+
         payment_attempt = {
             "order_id": order_id,
             "customer_id": customer_id,
@@ -211,6 +220,7 @@ def generate(config: dict | None = None) -> list[GeneratedRow]:
                     "p_recover_offsets": p_offsets,
                     "assignment": asdict(assignment),
                     "observed_outcome": observed_outcome,
+                    "actually_succeeded_silently": actually_succeeded_silently,
                 },
             )
         )
