@@ -114,7 +114,6 @@ def generate(config: dict | None = None) -> list[GeneratedRow]:
     method_weights = list(cfg["method_mix"].values())
     issuers = cfg["issuers"]
     offsets_hours = cfg["retry_offsets_hours"]
-    treatment_probability = cfg["treatment_assignment"]["probability"]
     amount_cfg = cfg["amount"]
 
     outage_calendars = _build_outage_calendars(rng, issuers, window_start, window_end, cfg)
@@ -171,15 +170,17 @@ def generate(config: dict | None = None) -> list[GeneratedRow]:
             decline.cause_family, created_at, issuer_outages, offsets_hours
         )
 
-        assignment = assign_treatment(order_id, treatment_probability)
-        # Historical label: "treatment" = immediate retry (offset 0h). The
-        # single observed outcome is drawn once, here, and fixed -- this is
-        # the one potential outcome a real system would actually see; the
-        # other remains counterfactual and lives only in ground_truth.
-        if assignment.assigned_treatment == "treatment":
-            observed_outcome = rng.random() < p_offsets[0]
-        else:
+        assignment = assign_treatment(order_id)
+        # Historical label: one of 5 arms (no_retry, retry_0h/6h/24h/72h) is
+        # drawn per attempt, and its single observed outcome is fixed here --
+        # the one potential outcome a real system would actually see. Every
+        # other arm's outcome remains counterfactual and lives only in
+        # ground_truth's full p_recover_offsets curve.
+        if assignment.assigned_arm == "no_retry":
             observed_outcome = rng.random() < p_unretried
+        else:
+            arm_offset = int(assignment.assigned_arm.removeprefix("retry_").removesuffix("h"))
+            observed_outcome = rng.random() < p_offsets[arm_offset]
 
         # For timeout-type codes only: did this "failed" attempt actually
         # succeed silently on the gateway side? A policy that retries one of

@@ -1,25 +1,30 @@
 """Historical treatment assignment for the simulator's labeled training data.
 
-Randomized 50/50 retry assignment (see docs/ASSUMPTIONS.md for why), computed
-as a deterministic hash of the order_id rather than drawn from RNG state --
-every assignment is independently recomputable from its order_id alone,
-without replaying the generation sequence in order. That's what makes it
-"logged": the mechanism, probability, and raw draw are reconstructable and
-auditable per attempt, not just an opaque random.random() call buried in a
-loop.
+Randomized among 5 arms per failed attempt: no_retry (control), and retry at
+each of the 4 candidate offsets (0h/6h/24h/72h) -- a genuine logged
+experiment per offset, not just retry-vs-no-retry. This is what lets Phase 3
+train a causal model of retry *timing*, not just retry yes/no, without the
+model ever touching the simulator's hidden recovery-probability curve. See
+docs/ASSUMPTIONS.md.
+
+Computed as a deterministic hash of order_id, not drawn from RNG call order
+-- every assignment is independently recomputable and auditable from its
+order_id alone.
 """
 
 import hashlib
 from dataclasses import dataclass
+
+ARMS: tuple[str, ...] = ("no_retry", "retry_0h", "retry_6h", "retry_24h", "retry_72h")
 
 
 @dataclass(frozen=True)
 class TreatmentAssignment:
     order_id: str
     mechanism: str
-    probability: float
+    arms: tuple[str, ...]
     draw: float
-    assigned_treatment: str  # "treatment" | "control"
+    assigned_arm: str
 
 
 def _uniform_from_hash(key: str) -> float:
@@ -28,14 +33,14 @@ def _uniform_from_hash(key: str) -> float:
 
 
 def assign_treatment(
-    order_id: str, probability: float, salt: str = "uplift-assignment-v1"
+    order_id: str, arms: tuple[str, ...] = ARMS, salt: str = "uplift-assignment-v2"
 ) -> TreatmentAssignment:
     draw = _uniform_from_hash(f"{salt}:{order_id}")
-    treated = draw < probability
+    idx = min(int(draw * len(arms)), len(arms) - 1)
     return TreatmentAssignment(
         order_id=order_id,
         mechanism="randomized",
-        probability=probability,
+        arms=arms,
         draw=draw,
-        assigned_treatment="treatment" if treated else "control",
+        assigned_arm=arms[idx],
     )

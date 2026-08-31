@@ -1,31 +1,29 @@
-from simulator.assignment import assign_treatment
+from collections import Counter
+
+from simulator.assignment import ARMS, assign_treatment
 
 
 def test_assignment_is_deterministic() -> None:
-    a = assign_treatment("order_abc123", 0.5)
-    b = assign_treatment("order_abc123", 0.5)
+    a = assign_treatment("order_abc123")
+    b = assign_treatment("order_abc123")
     assert a == b
 
 
-def test_assignment_is_roughly_balanced_at_scale() -> None:
-    n = 5000
-    treated = sum(
-        1 for i in range(n) if assign_treatment(f"order_{i}", 0.5).assigned_treatment == "treatment"
-    )
-    ratio = treated / n
-    assert 0.45 < ratio < 0.55
+def test_assignment_always_picks_a_known_arm() -> None:
+    for i in range(500):
+        result = assign_treatment(f"order_{i}")
+        assert result.assigned_arm in ARMS
 
 
-def test_assignment_respects_probability() -> None:
-    n = 5000
-    treated = sum(
-        1 for i in range(n) if assign_treatment(f"order_{i}", 0.2).assigned_treatment == "treatment"
-    )
-    ratio = treated / n
-    assert 0.15 < ratio < 0.25
+def test_assignment_is_roughly_uniform_across_arms_at_scale() -> None:
+    n = 10000
+    counts = Counter(assign_treatment(f"order_{i}").assigned_arm for i in range(n))
+    expected = n / len(ARMS)
+    for arm in ARMS:
+        assert abs(counts[arm] - expected) / expected < 0.15
 
 
 def test_draw_is_in_unit_interval() -> None:
     for i in range(200):
-        result = assign_treatment(f"order_{i}", 0.5)
+        result = assign_treatment(f"order_{i}")
         assert 0.0 <= result.draw < 1.0
