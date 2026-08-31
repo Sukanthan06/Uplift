@@ -34,10 +34,30 @@ This is deliberately unconfounded: we simulate as if the historical data-generat
 
 **This mechanism applies only to the historical/training data.** At evaluation/deployment time (Phase 3+), retry decisions come from the policy engine (uplift-ranked, budget-constrained), not randomization — the whole point of the project is comparing that learned policy against baselines. The two must not be conflated: training-time randomization avoids confounding the model; evaluation-time policy decisions are what's actually being tested. The chronological train/validation/test split (CLAUDE.md non-negotiable #6: "split by time, not randomly") is applied on top of this randomized-label population — never train on a time window later than what's evaluated.
 
+### (d) Addendum, Phase 2: timeout ambiguity / double-charge near-misses
+
+Frozen 2026-08-31, Phase 2. For `taxonomy.TIMEOUT_AMBIGUOUS_CODES` only (`payment_timed_out`, `upi_timeout`, `netbanking_session_timeout`) — codes where the gateway genuinely could not confirm the outcome, as opposed to a definite decline — a small fraction (`ambiguous_timeout_success_rate: 0.05` in `sim_config.yaml`, illustrative) of these attempts are flagged `actually_succeeded_silently=True` in hidden ground truth: the charge went through despite being reported as failed. This is the real-world phenomenon CLAUDE.md non-negotiable #2 ("reconcile before retry, always") exists to guard against, and it's what gives the evaluation harness's "double-charge near-misses" metric something concrete to count: a baseline that retries one of these attempts without reconciling first (none of the Phase 2 baselines reconcile — that service doesn't exist until Phase 5) produces a genuine near-miss, not a proxy. This also gives Phase 5's reconciler a concrete scenario to demonstrate against later.
+
+This is additive to the Phase 1 freeze above, not a revision — everything already committed (the recovery curves, the 50k generated attempts) stays valid; this only adds one new hidden field, scoped to three specific codes.
+
 ## Policy
 
 _TBD — Phase 5._
 
 ## Evaluation
 
-_TBD — Phase 2._
+Frozen 2026-08-31, Phase 2. Implementation: `backend/ml/{baselines,evaluate}.py`.
+
+**Scoring is expected-value, not a single stochastic realization.** Every policy's ₹ recovered, retry count, etc. are computed analytically from the true recovery probabilities in `ground_truth.jsonl` (probability-weighted), not by sampling one 0/1 outcome per attempt. This matches the project's actual thesis — optimizing for *expected* incremental revenue — and keeps the comparison table deterministic and reproducible rather than dominated by sampling noise across ~6,665 failed attempts split five ways by cause family. For a sequence of retries (e.g. retry-3x), the standard sequential-Bernoulli-trial formula is used: attempt *i* is only reached (in expectation) if all prior attempts in the plan failed, so expected retries executed and expected probability of eventual recovery both account for early stopping at first success.
+
+**The four baselines:**
+- **do-nothing**: never retries. Its ₹ recovered is *not* zero — it's the natural/unprompted recovery rate (`p_recover_unretried`), since some customers or banks self-resolve without our intervention. This is the correct counterfactual baseline: the project's thesis is about *incremental* revenue over this natural rate, not revenue over literally nothing.
+- **retry-once**: retries every failed attempt exactly once, immediately (offset 0h).
+- **retry-3x**: retries at 0h, +6h, +24h (the first three of the four candidate offsets), stopping at first success, with `patience_decay.per_attempt_multiplier` (0.75, from `sim_config.yaml`) compounding on each successive attempt's probability — modeling customer/system fatigue.
+- **rule-based**: routes by `cause_family` — never retries `card_or_account_issue` or `risk_fraud` (hard declines, retrying wastes money); retries `technical_bank_downtime` at +6h (wait out the outage); `insufficient_funds` at +72h (payday effect); `customer_error` at +24h (next-day nudge). `cause_family` here is a deterministic lookup from `error_code` via `taxonomy.py` — the same static, documented classification used to label the simulated data, not simulator hidden state. It's the kind of lookup a real integration would derive from its own PSP's decline-code docs, no ML/LLM required. This is a distinct thing from the hidden recovery-probability *curve*, which stays off-limits.
+
+**Customer contacts** = expected retries executed against `customer_error`-family attempts specifically — the one cause family where "retry" means re-prompting the customer (they need to redo their OTP/CVV/UPI PIN) rather than a silent gateway-side re-authorization, per the causal design in (a) above.
+
+**Cost per ₹ recovered** = (expected total retries × `retry_cost_inr`, illustrative 2.0 in `sim_config.yaml`) ÷ ₹ recovered.
+
+**Double-charge near-misses** = count (not expected value — this is a concrete, already-resolved fact per attempt from ground truth, not a live probability) of attempts where `actually_succeeded_silently=True` *and* the policy chose to retry at all. The first retry in any plan is always executed before any check, so if the attempt had already silently succeeded, retrying it is a real near-miss the moment the policy decides to retry — see (d) above.
