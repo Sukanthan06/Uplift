@@ -1,0 +1,91 @@
+# Uplift simulator configuration.
+#
+# Every parameter below is either:
+#   (a) grounded in a cited real-world source (noted inline), or
+#   (b) marked ILLUSTRATIVE -- a defensible, demo-legible design choice, not
+#       a claimed real-world statistic. Real-world decline rates, outage
+#       frequencies, and recovery curves are proprietary to PSPs/issuers and
+#       were not available to cite directly.
+#
+# ILLUSTRATIVE values are deliberately exposed here (not hardcoded in
+# generator.py) so Phase 4's sensitivity sweep can vary them and show where
+# the uplift-ranked policy wins and where it stops winning.
+
+random_seed: 42
+
+window:
+  start: "2026-01-01T00:00:00Z"
+  days: 90
+
+volume:
+  n_attempts: 50000 # root attempts only (attempt_no=1); CLAUDE.md Phase 1 target
+
+# Payment method mix. UPI's dominance reflects NPCI/RBI-reported transaction
+# volume in India, where UPI is by far the largest retail payment rail by
+# volume. The exact split below is ILLUSTRATIVE, not a cited figure.
+method_mix:
+  upi: 0.65
+  card: 0.25
+  netbanking: 0.07
+  wallet: 0.03
+
+# Base decline rate per method, applied before outage effects. ILLUSTRATIVE.
+base_decline_rate:
+  upi: 0.14
+  card: 0.10
+  netbanking: 0.16
+  wallet: 0.08
+
+# Issuers used for card/netbanking/upi attempts (wallet has no issuer -- it's
+# a standalone balance, not bank-mediated). Real bank names, chosen for
+# realistic-looking variety; not tied to real transaction/outage data.
+issuers:
+  - "HDFC Bank"
+  - "ICICI Bank"
+  - "State Bank of India"
+  - "Axis Bank"
+  - "Kotak Mahindra Bank"
+  - "Punjab National Bank"
+  - "Bank of Baroda"
+
+# Issuer outage mechanism -- models correlated technical failures. Each
+# issuer independently cycles through down/up periods across the simulation
+# window. ILLUSTRATIVE.
+outage:
+  mean_days_between_outages: 14
+  duration_hours:
+    mean_log: 0.7 # ln(hours); lognormal
+    sigma_log: 0.6
+    max_hours: 12
+  # Multiplier applied to the technical-failure share of decline codes while
+  # an issuer is down.
+  technical_decline_multiplier: 6
+
+# Applied per additional attempt when the Phase 2 evaluation harness
+# simulates repeated retries (retry-3x baseline, etc.) against this
+# simulator's ground truth. Not consumed by generator.py itself, which only
+# generates root (attempt_no=1) attempts. ILLUSTRATIVE.
+patience_decay:
+  per_attempt_multiplier: 0.75
+
+# Retry-timing candidates the Phase 3 scheduler chooses between. Fixed by
+# design decision (see docs/ASSUMPTIONS.md), not sourced.
+retry_offsets_hours: [0, 6, 24, 72]
+
+# Window after a retry within which a success still counts as "recovered by
+# that retry." Design decision (see docs/ASSUMPTIONS.md), not sourced.
+recovery_window_hours: 72
+
+# Historical/training-data treatment assignment: randomized, to avoid
+# confounding the Phase 3 T-learner. See docs/ASSUMPTIONS.md.
+treatment_assignment:
+  mechanism: "randomized"
+  probability: 0.5
+
+# Amount distribution (INR), lognormal. ILLUSTRATIVE -- chosen to put most
+# amounts in a plausible retail range with a long tail, not sourced.
+amount:
+  mu: 6.5
+  sigma: 1.0
+  min: 10
+  max: 100000
