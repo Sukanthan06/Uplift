@@ -1,6 +1,55 @@
 # Demo Script (5 minutes)
 
 Updated at the end of every phase with what that phase adds to the video.
+The per-phase sections below are the full reference — everything that could
+be said. **For the actual recording, follow the timed cut immediately
+below** — narrating every phase section in full runs well past 5 minutes.
+
+## The 5-minute cut (shooting order)
+
+**0:00–0:20 — Hook.** One sentence, on camera or as a title card: "Don't
+optimize for retry success probability — optimize for the incremental
+revenue a retry creates." `docker compose up`, three services green.
+
+**0:20–1:00 — Grounded simulation, honest baseline.** `python -m
+simulator.generator` live (50k attempts, ~6s) — decline codes are cited
+(Razorpay/ISO 8583/NPCI docs), not invented. Cut straight to `python -m
+ml.evaluate`'s table: rule-based recovers 92% of retry-3x's revenue at 36%
+of the retries. Say the thesis is already visible before any ML exists.
+
+**1:00–2:00 — The uplift model, honestly.** `python -m ml.train_uplift`,
+then the Phase 3 head-to-head table. Say the real number on camera: the
+model ties the hand-picked rule, doesn't beat it (−0.5%). Pivot immediately
+to `uplift@20%=0.76` and the rising Qini curve — the ranking is real signal,
+just not enough yet to beat a good heuristic. This is the credibility beat;
+don't rush past it or soften it.
+
+**2:00–2:30 — Sensitivity sweep, one chart.** Cut to the heatmap image only
+(skip the four flat-line sweeps in the video, mention them in one sentence).
+Say: the model's gap narrows from −25% to near-parity as failure volume
+rises — looks like a data problem, not a structural one.
+
+**2:30–3:30 — Live pipeline, the best moment.** `python -m app.demo_pipeline`
+live, real Groq calls. Land on the `upi_invalid_account` example: LLM says
+`customer_error`, taxonomy says `card_or_account_issue`, policy engine
+blocks the retry anyway. Say plainly: this disagreement happened for real,
+on the first live run, and the original code would have let it through.
+Then the 503 incident: 3 attempts, `retry_exhausted`, no infinite loop.
+
+**3:30–4:10 — Audit chain.** Same run's tamper-and-verify: valid chain,
+tamper one row via raw SQL, verify again — exact record flagged, everything
+after it cascades, everything before stays valid. One line: "never
+immutable, always tamper-evident."
+
+**4:10–5:00 — Dashboard fly-through and close.** `localhost:5173`, all four
+tabs in ~10 seconds each: Overview (the tables and charts just shown, now
+live), Batch Run (start one, watch it stream), Decision Detail (the same
+`upi_invalid_account` moment, now in the UI), Audit Verify (green dots).
+Close on the one-sentence thesis again.
+
+---
+
+## Full reference, phase by phase
 
 ## Phase 1 — Foundation
 
