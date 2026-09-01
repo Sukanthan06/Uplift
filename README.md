@@ -9,7 +9,7 @@ Built for the Razorpay AI Buildathon, Track 03 (AI Revenue Recovery).
 
 ## Status
 
-Phase 1 (Foundation), Phase 2 (Evaluation harness), Phase 3 (Uplift model), Phase 4 (Sensitivity sweep), Phase 5 (Reconciler + Diagnoser + Policy + Action), and Phase 6 (Audit chain) complete. Phase 7 (Dashboard) next.
+Phase 1 (Foundation) through Phase 7 (Dashboard) complete. Phase 8 (Ship — README/ARCHITECTURE polish, demo video) next.
 
 ### Phase 2 results (honest, no ML yet)
 
@@ -62,6 +62,19 @@ Run live via `python -m app.demo_pipeline` (real Postgres, real Groq LLM calls).
 `app/services/audit.py`: hash-chained, tamper-*evident* — never "immutable," Postgres rows can always be edited; the chain makes edits detectable. `GET /audit/verify` walks the chain and reports which records are valid.
 
 Verified live: ran the full Phase 5 pipeline (12 audit events), `verify()` reported all valid; directly tampered one row's `payload_json` via raw SQL (bypassing the app); `verify()` correctly reported that exact record invalid (`"payload does not match this record's stored hash"`) and every record after it invalid (`"chain already broken at an earlier record"`), while every record before it stayed valid — confirmed identically through both the Python function and the live `GET /audit/verify` HTTP endpoint. A more sophisticated tamper (recompute the edited row's own hash to hide it) is still caught, one record later, at the next row's now-mismatched `prev_hash` — covering a tamper completely requires re-deriving the whole chain forward from that point, not editing one row. See `docs/ASSUMPTIONS.md` ("Audit") and `docs/DECISIONS.md` for full methodology.
+
+### Phase 7 (dashboard)
+
+Single page, four tabs (tab-switched client-side, no router — "single page, no Next.js" per CLAUDE.md), Recharts for the Qini curve and sensitivity sweeps:
+
+- **Overview** — simulator stats, Phase 2/3/4 result tables and charts, live pipeline activity. `GET /overview` combines a live DB query, `ml/evaluate.py`'s existing scoring functions, and Phase 4's pre-computed `results.json` (the sweep itself isn't re-run per request — it takes minutes).
+- **Batch Run** — `GET /batch/run` streams N failed attempts through the real pipeline via Server-Sent Events; the page renders each result as it arrives.
+- **Decision Detail** — per-payment diagnosis + uplift + decision + action + audit trail, joined from `GET /decisions/{id}`.
+- **Audit Verify** — visualizes `GET /audit/verify`.
+
+`app/services/pipeline.py` is a new, single reusable orchestration function (reconciler → diagnoser → scorer → policy_engine → action_service) used by both `demo_pipeline.py` and the Batch Run endpoint — replacing Phase 5/6's inline duplicate of the same logic, and fixing a real gap it had: `reconciliations` and `diagnoses` rows were never actually being persisted, only described in `audit_log` events. Two more real bugs were caught building this phase (Phase 3's dashboard table was silently missing the `uplift_ranked` row; a headless-Chromium `fullPage` screenshot quirk that looked like broken charts but wasn't) — see `docs/DECISIONS.md`.
+
+Verified live in an actual browser (Playwright + Chromium, no console errors): all four tabs render with real data, Batch Run's SSE stream was driven end-to-end (Run batch → live rows appearing → completion), and the same LLM-vs-taxonomy disagreement from Phase 5 reproduced naturally in Decision Detail.
 
 ## Stack
 

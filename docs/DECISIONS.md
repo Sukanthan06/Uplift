@@ -91,3 +91,27 @@ Log of non-obvious technical choices made during the build. One entry per decisi
 **Chosen:** `_canonical_json()` always calls `json.dumps(payload, sort_keys=True, ...)`, used identically when computing a hash at write time and when recomputing it at verify time.
 
 **Why:** Postgres's `JSONB` column type does not preserve the original key insertion order of a JSON object -- it can reorder keys internally. If hash computation trusted whatever order keys happened to come back in after a round trip through JSONB, a payload that was never touched by anyone could still fail verification purely because storage reordered it, which would be a false tamper alarm undermining the whole mechanism. Sorting keys ourselves, on both sides, means the byte sequence being hashed only depends on logical content, never on storage-internal ordering.
+
+## Phase 7 — Reconciliations and diagnoses were never actually persisted
+
+**Chosen:** extracted `app/services/pipeline.py` (`run_pipeline()`) as the single reusable orchestration function -- reconciler -> diagnoser -> scorer -> policy_engine -> action_service -- and it now writes real `Reconciliation` and `Diagnosis` rows, not just `audit_log` events describing them. `demo_pipeline.py` was refactored to call it instead of duplicating the orchestration inline.
+
+**Why:** building the Decision Detail page (diagnosis + uplift + decision + action + audit, per CLAUDE.md's page spec) required joining against the `reconciliations` and `diagnoses` tables -- and they were empty. Phase 5/6's `demo_pipeline.py` only ever wrote `audit_log` entries describing what the reconciler and diagnoser did, never a row in the tables that exist specifically to hold that data. The schema was right from Phase 1; the orchestration script just never used two of its five tables. Same category of gap as the Phase 5 "decisions weren't always persisted" fix -- caught by building the thing that actually needs to read the data back, not by reviewing the write path in isolation.
+
+## Phase 7 — Overview's Phase 3 comparison was missing the uplift-ranked policy
+
+**Chosen:** `app/api/overview.py`'s `_phase3_result()` explicitly computes `score_uplift_policy` (budget matched to `rule_based`'s retry count, same methodology as `ml/evaluate.py`'s `run_phase3()`) and adds it to the baselines dict.
+
+**Why:** caught live by curling the endpoint and checking for the key, not by reading the code -- the first version only looped over `ml.baselines.BASELINES` (the four non-ML policies), which is correct for Phase 2 but silently drops the one policy Phase 3 exists to show. The bug would have been invisible in a screenshot of the page (the table just would have had one less row, easy to not notice) -- checking the actual JSON keys against what was expected caught it before it shipped.
+
+## Phase 7 — Sensitivity results are pre-computed, not recomputed per request
+
+**Chosen:** `ml/sensitivity_sweep.py`'s `run()` now also writes `ml/output/sensitivity/results.json` (sweep points + heatmap margins, JSON-serializable). `app/api/overview.py` reads that file if present; returns `null` for that section otherwise.
+
+**Why:** the sweep takes a few minutes end-to-end (20+ in-memory generate/train/evaluate cycles). Recomputing it on every dashboard page load isn't reasonable, and there's no reason to -- the sweep result doesn't change between requests. Same pattern as the trained model files (`ml/output/*.pkl`): a backend script produces an artifact, the API serves it, neither silently regenerates the other's work.
+
+## Phase 7 — `fullPage` screenshots in headless Chromium silently drop chart lines
+
+**Observed, not chosen:** verifying the dashboard with Playwright, `page.screenshot({ fullPage: true })` on a page taller than the viewport rendered every Recharts `<Line>` as an empty axis with no visible line -- despite the SVG `<path>` elements existing in the DOM with correct `d`, `stroke`, and `opacity: 1`. Cropping to just the chart's own SVG element, or using a tall fixed-height viewport with a normal (non-`fullPage`) screenshot, rendered the lines correctly every time.
+
+**Why this is noted, not fixed:** nothing in the app was wrong -- this is a Chromium full-page-screenshot compositing quirk with tall pages, not a rendering bug. Logged here so a future session re-verifying this dashboard doesn't mistake an empty-looking `fullPage` screenshot for a regression and start debugging application code that's fine. Verify with a tall fixed-viewport screenshot (or crop to the chart element) instead of `fullPage: true` when charts are involved.

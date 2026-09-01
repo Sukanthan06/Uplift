@@ -45,3 +45,17 @@ Scene: continue the same `python -m app.demo_pipeline` run straight into its fin
 Then the tamper: a direct SQL `UPDATE` on one `audit_log` row's `payload_json`, bypassing the app entirely — the kind of thing a rogue insider or a compromised DB credential could do. Run `verify()` again on camera: `all_valid=False`, `first_invalid_id` points at exactly the tampered row, and every record after it also flips to invalid with `"chain already broken at an earlier record"` — while everything before it stays valid. Hit `GET /audit/verify` in the browser or via curl to show the same result over HTTP, not just in a script.
 
 If there's time, explain the harder case without demoing it live: a tamperer who also recomputes that one row's own hash to hide the edit doesn't get away with it either — the *next* row's `prev_hash` was fixed at write time to the original hash, so the break just moves one record later. Covering a tamper completely means re-deriving the whole chain from that point forward, not editing one row. This is in `test_audit.py` as `test_sophisticated_tamper_that_recomputes_its_own_hash_breaks_the_next_record` if it's worth cutting to the test output instead.
+
+## Phase 7 — Dashboard
+
+Scene: open the running frontend (`localhost:5173`), single page, four tabs across the top — Overview, Batch Run, Decision Detail, Audit Verify. No page reloads switching between them; this is CLAUDE.md's "single page, no Next.js" literally.
+
+**Overview**: scroll through live. Simulator stats, then the Phase 2 baseline table, then Phase 3's table *with the uplift-ranked row* and its Qini curve, then Phase 4's four sensitivity sweeps and the outage-frequency × decline-rate heatmap — every number on this page is either a live DB query or a pre-computed artifact from the phases already demoed, nothing re-derived or faked for the dashboard.
+
+**Batch Run**: set attempts to 3-5, hit "Run batch," and let it stream live — real Postgres writes, real Groq calls, one row appearing per attempt as it completes. This is the best chance to land the block_cause_families moment live on camera again: if a `upi_invalid_account`-style attempt comes up in the batch, the Decision column will show `no_retry (block_cause_families)` even though the diagnosis panel says the LLM called it `customer_error` — say the same line as the Phase 5 scene, because it's the same real mechanism.
+
+**Decision Detail**: click into the same attempt from the batch that just ran. Show the full trail — reconciliation, diagnosis (with the LLM's actual root-cause text), the decision and its rules_fired, the action outcome if any, and the hash-chained audit trail at the bottom, all for one payment, all real.
+
+**Audit Verify**: hit "Re-verify," green dots down the list. If Phase 6's tamper demo was run earlier in the same session, this is where a red entry and everything after it would show up instead — the same `GET /audit/verify` call, now visualized.
+
+One thing to flag if recording a `fullPage` screenshot for anything outside the live demo: headless Chromium's full-page capture can silently drop Recharts lines on a tall page even though they render correctly on screen — a browser/tooling quirk, not an app bug (see `docs/DECISIONS.md`). Screen-record or screenshot the visible viewport, not a stitched full-page capture, if this comes up.
