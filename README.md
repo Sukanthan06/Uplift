@@ -9,7 +9,7 @@ Built for the Razorpay AI Buildathon, Track 03 (AI Revenue Recovery).
 
 ## Status
 
-Phase 1 (Foundation), Phase 2 (Evaluation harness), Phase 3 (Uplift model), Phase 4 (Sensitivity sweep), and Phase 5 (Reconciler + Diagnoser + Policy + Action) complete. Phase 6 (Audit chain) next.
+Phase 1 (Foundation), Phase 2 (Evaluation harness), Phase 3 (Uplift model), Phase 4 (Sensitivity sweep), Phase 5 (Reconciler + Diagnoser + Policy + Action), and Phase 6 (Audit chain) complete. Phase 7 (Dashboard) next.
 
 ### Phase 2 results (honest, no ML yet)
 
@@ -56,6 +56,12 @@ Run live via `python -m app.demo_pipeline` (real Postgres, real Groq LLM calls).
 **Retry-exhausted incident, verified live**: a client forced to always return 503 produces exactly 3 total attempts (1 initial + 2 retries, exponential backoff), then `outcome=retry_exhausted` — no infinite loop, a bounded, visible incident.
 
 **Stack deviation, logged not silent**: the diagnoser uses Groq (`openai/gpt-oss-120b`), not Anthropic — CLAUDE.md's stated stack, changed by explicit user direction this session. See `docs/DECISIONS.md`.
+
+### Phase 6 (audit chain)
+
+`app/services/audit.py`: hash-chained, tamper-*evident* — never "immutable," Postgres rows can always be edited; the chain makes edits detectable. `GET /audit/verify` walks the chain and reports which records are valid.
+
+Verified live: ran the full Phase 5 pipeline (12 audit events), `verify()` reported all valid; directly tampered one row's `payload_json` via raw SQL (bypassing the app); `verify()` correctly reported that exact record invalid (`"payload does not match this record's stored hash"`) and every record after it invalid (`"chain already broken at an earlier record"`), while every record before it stayed valid — confirmed identically through both the Python function and the live `GET /audit/verify` HTTP endpoint. A more sophisticated tamper (recompute the edited row's own hash to hide it) is still caught, one record later, at the next row's now-mismatched `prev_hash` — covering a tamper completely requires re-deriving the whole chain forward from that point, not editing one row. See `docs/ASSUMPTIONS.md` ("Audit") and `docs/DECISIONS.md` for full methodology.
 
 ## Stack
 
