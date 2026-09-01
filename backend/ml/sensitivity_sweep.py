@@ -14,6 +14,7 @@ docs/DECISIONS.md.
 from __future__ import annotations
 
 import copy
+import json
 from pathlib import Path
 from typing import Any
 
@@ -235,6 +236,41 @@ def plot_heatmap(param_a: str, param_b: str, grid: list[list[dict]]) -> Path:
     return out_path
 
 
+def _results_to_json(all_results: dict[str, list[dict]], grid: list[list[dict]]) -> dict:
+    """Dashboard-friendly summary: recovered INR per policy per swept value,
+    plus the heatmap grid's margins. Written alongside the PNGs so the
+    Phase 7 Overview page can render this with Recharts without re-running
+    the (multi-minute) sweep on every page load."""
+    sweeps = {}
+    for param_name, results in all_results.items():
+        sweeps[param_name] = {
+            "label": SWEEP_PARAMS[param_name]["label"],
+            "points": [
+                {
+                    "value": r["value"],
+                    "recovered_inr": {
+                        name: r["scores"][name].recovered_inr for name in r["scores"]
+                    },
+                    "margin_pct": _margin(r["scores"]),
+                }
+                for r in results
+            ],
+        }
+
+    heatmap = {
+        "param_a": {"name": "outage_frequency", "label": SWEEP_PARAMS["outage_frequency"]["label"]},
+        "param_b": {
+            "name": "base_decline_rate",
+            "label": SWEEP_PARAMS["base_decline_rate"]["label"],
+        },
+        "values_a": SWEEP_PARAMS["outage_frequency"]["values"],
+        "values_b": SWEEP_PARAMS["base_decline_rate"]["values"],
+        "margins": [[_margin(cell["scores"]) for cell in row] for row in grid],
+    }
+
+    return {"sweeps": sweeps, "heatmap": heatmap}
+
+
 def run() -> None:
     base_cfg = load_config()
 
@@ -256,6 +292,11 @@ def run() -> None:
     grid = sweep_grid("outage_frequency", "base_decline_rate", base_cfg)
     heatmap_path = plot_heatmap("outage_frequency", "base_decline_rate", grid)
     print(f"\nheatmap -> {heatmap_path}")
+
+    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+    results_path = OUTPUT_DIR / "results.json"
+    results_path.write_text(json.dumps(_results_to_json(all_results, grid), indent=2))
+    print(f"results json -> {results_path}")
 
 
 if __name__ == "__main__":
