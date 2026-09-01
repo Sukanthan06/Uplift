@@ -53,3 +53,29 @@ Log of non-obvious technical choices made during the build. One entry per decisi
 **Observed, not chosen:** across the `outage_frequency` x `base_decline_rate` grid, `uplift_ranked` never beats `rule_based` (no green cells). But the gap shrinks sharply with more failure volume: at 0.5x the default decline rate (fewer failed attempts, less training signal), the model trails by −17% to −25% across every outage frequency; by 1.0-1.5x decline rate, the gap narrows to near-parity (−0.1% to −0.3% in several cells).
 
 **Why this matters:** it reframes Phase 3's "ties, doesn't beat" result — the limiting factor looks like training/test sample size (failure volume), not a structural flaw in the T-learner approach. A production deployment with real transaction volume (far more than this simulator's 90-day, 50k-attempt window) would be expected to close this gap further. This is an inference from the sweep, not a claim verified at production scale — flagged as such rather than overstated.
+
+## Phase 5 — LLM provider switched from Anthropic to Groq
+
+**Chosen:** `app/services/diagnoser.py` uses the `groq` SDK (model `openai/gpt-oss-120b`), not `anthropic`. `.env`'s `ANTHROPIC_API_KEY` placeholder was replaced with `GROQ_API_KEY`/`GROQ_MODEL`.
+
+**Why:** explicit user direction this session, not my own call — CLAUDE.md's Stack section says Anthropic and "do not deviate without asking"; the user is the one asking, which satisfies that rule rather than breaking it. Logged here so the deviation is visible, not silent. No real Anthropic key was ever configured in this environment (still the `sk-ant-xxxx` placeholder when checked); a real Groq key was supplied and used for live verification of every example in this phase's demo run.
+
+## Phase 5 — policy_engine's block check uses the deterministic taxonomy, never the LLM's own classification
+
+**Chosen:** `policy_engine.decide()` takes `cause_family` as a separate parameter (the deterministic `taxonomy.py` lookup for the attempt's `error_code`) and checks `block_cause_families` against that — never against `diagnosis.cause_family`, the LLM's own output.
+
+**Why:** caught live, not in review. Running `app/demo_pipeline.py` against the real Groq API, the model classified a real `upi_invalid_account` attempt (taxonomy: `card_or_account_issue`, a blocked hard decline) as `customer_error` instead — and the first version of `policy_engine.py` trusted that classification, letting a retry through that should have been blocked. CLAUDE.md non-negotiable #1 says the LLM never makes money decisions; a policy gate that blocks or allows a retry based on the LLM's own classification is exactly that, one level removed. Fixed by decoupling the safety-critical block check from the LLM entirely — `diagnosis` is still used for its `confidence` gate and its human-readable `root_cause`, just not for the blocking decision. `require_diagnosis_confidence`'s rationale was updated to match (it no longer exists "to trust the classification for the block check," since that check no longer uses the classification at all).
+
+**Consequence:** this is exactly the kind of thing non-negotiable #7 (honest evaluation, verify rather than assume) argues for building a live smoke test, not just unit tests with fake clients, before calling a phase done — the bug was invisible to `test_policy_engine.py`'s hand-picked fixtures because they never exercised a real LLM's actual (occasionally wrong) judgment.
+
+## Phase 5 — every policy decision is persisted, not just approved retries
+
+**Chosen:** `demo_pipeline.py` writes a `decisions` row for every attempt that reaches `policy_engine.decide()`, regardless of `chosen_action`. `action_service.execute_retry()` is only called when `chosen_action == "retry"`.
+
+**Why:** the first version only persisted a decision when it led to a retry, so a blocked decision (e.g. the `block_cause_families` case above) left no row in the `decisions` table at all -- just a print statement. That's a real gap against the schema's evident intent (an audit trail of every decision made and why) and against Phase 7's dashboard needs (CLAUDE.md: "Decision Detail" shows diagnosis + uplift + decision + action, which requires blocked decisions to be visible too, not only approved ones).
+
+## Phase 5 — `xgboost-cpu` instead of `xgboost`
+
+**Chosen:** `pyproject.toml` depends on `xgboost-cpu`, not `xgboost`. Same Python API (`import xgboost as xgb` unchanged), drop-in compatible, all 70 tests pass identically after the swap.
+
+**Why:** rebuilding the Docker backend image after adding `groq`/`matplotlib` this phase revealed that `xgboost`'s Linux wheel unconditionally depends on `nvidia-nccl-cu12` -- a 342MB CUDA library -- for Python <3.12 on Linux, regardless of whether GPU training is ever used. This project trains on CPU only, everywhere. The dependency was invisible locally because it's a Linux-only wheel (the local Windows dev venv never resolves it), but it turned a ~3-minute Docker build into one that was still downloading after 10+ minutes. `xgboost-cpu` is PyPI's official CPU-only variant of the same package -- same API surface, no CUDA stack. Docker build time dropped back to ~3 minutes with the swap.
