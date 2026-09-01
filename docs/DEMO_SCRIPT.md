@@ -37,3 +37,11 @@ Walk the second example specifically — this is the best moment in the whole de
 Then the incident scene: inject a client that always returns 503. Show three total attempts (one initial, two retries, exponential backoff), then `outcome=retry_exhausted` and the escalation line. No infinite loop, no silent failure — a bounded, visible incident.
 
 Close on the audit angle for Phase 6: every decision is now persisted, whether it led to a retry or not (`decisions` table has both `retry` and `no_retry` rows with `rules_fired` populated) — this is exactly the trail Phase 6's hash chain will wrap.
+
+## Phase 6 — Audit chain
+
+Scene: continue the same `python -m app.demo_pipeline` run straight into its final section. `verify()` runs first on the untouched chain — 12 records, `all_valid=True`. Say the sentence CLAUDE.md is explicit about on camera: never call this "immutable," Postgres rows can always be edited — what it actually provides is tamper-*evidence*.
+
+Then the tamper: a direct SQL `UPDATE` on one `audit_log` row's `payload_json`, bypassing the app entirely — the kind of thing a rogue insider or a compromised DB credential could do. Run `verify()` again on camera: `all_valid=False`, `first_invalid_id` points at exactly the tampered row, and every record after it also flips to invalid with `"chain already broken at an earlier record"` — while everything before it stays valid. Hit `GET /audit/verify` in the browser or via curl to show the same result over HTTP, not just in a script.
+
+If there's time, explain the harder case without demoing it live: a tamperer who also recomputes that one row's own hash to hide the edit doesn't get away with it either — the *next* row's `prev_hash` was fixed at write time to the original hash, so the break just moves one record later. Covering a tamper completely means re-deriving the whole chain from that point forward, not editing one row. This is in `test_audit.py` as `test_sophisticated_tamper_that_recomputes_its_own_hash_breaks_the_next_record` if it's worth cutting to the test output instead.

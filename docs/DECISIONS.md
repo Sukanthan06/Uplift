@@ -79,3 +79,15 @@ Log of non-obvious technical choices made during the build. One entry per decisi
 **Chosen:** `pyproject.toml` depends on `xgboost-cpu`, not `xgboost`. Same Python API (`import xgboost as xgb` unchanged), drop-in compatible, all 70 tests pass identically after the swap.
 
 **Why:** rebuilding the Docker backend image after adding `groq`/`matplotlib` this phase revealed that `xgboost`'s Linux wheel unconditionally depends on `nvidia-nccl-cu12` -- a 342MB CUDA library -- for Python <3.12 on Linux, regardless of whether GPU training is ever used. This project trains on CPU only, everywhere. The dependency was invisible locally because it's a Linux-only wheel (the local Windows dev venv never resolves it), but it turned a ~3-minute Docker build into one that was still downloading after 10+ minutes. `xgboost-cpu` is PyPI's official CPU-only variant of the same package -- same API surface, no CUDA stack. Docker build time dropped back to ~3 minutes with the swap.
+
+## Phase 6 — Chain-walking logic is a pure function, separate from DB access
+
+**Chosen:** `audit.verify_chain(records: list[AuditRecord])` is a pure function taking plain dataclasses in and returning results out, with no SQLAlchemy session or Postgres dependency. `audit.verify()` is a thin wrapper that queries the DB and calls it.
+
+**Why:** every other module in this project keeps its core logic testable without a live Postgres connection (baselines/evaluate score in-memory `AttemptRecord`s, `policy_engine.decide()` takes plain values, `action_service._attempt_gateway_call()` is DB-free) -- the whole test suite runs in ~5 seconds with no DB fixture needed anywhere. Audit verification follows the same pattern: `test_audit.py` builds synthetic chains, tampers with them in-memory, and asserts on `verify_chain()` directly, covering both the naive-tamper and hide-the-tamper-by-recomputing-one-hash scenarios without touching Postgres. The DB-backed path (`append`/`verify`) is still exercised, but live, via `demo_pipeline.py`, same as every other service's DB integration in this project.
+
+## Phase 6 — Canonical JSON serialization guards against JSONB reordering
+
+**Chosen:** `_canonical_json()` always calls `json.dumps(payload, sort_keys=True, ...)`, used identically when computing a hash at write time and when recomputing it at verify time.
+
+**Why:** Postgres's `JSONB` column type does not preserve the original key insertion order of a JSON object -- it can reorder keys internally. If hash computation trusted whatever order keys happened to come back in after a round trip through JSONB, a payload that was never touched by anyone could still fail verification purely because storage reordered it, which would be a false tamper alarm undermining the whole mechanism. Sorting keys ourselves, on both sides, means the byte sequence being hashed only depends on logical content, never on storage-internal ordering.

@@ -85,6 +85,22 @@ Frozen 2026-09-01, Phase 5. Implementation: `backend/app/services/{reconciler,di
 
 **Every decision is persisted**, not just approved retries — see `docs/DECISIONS.md`. A `decisions` row exists for every attempt that reaches the policy engine, whichever way it went.
 
+## Audit
+
+Frozen 2026-09-01, Phase 6. Implementation: `backend/app/services/audit.py`, `backend/app/api/audit.py` (`GET /audit/verify`).
+
+**Tamper-*evident*, never called "immutable"** (CLAUDE.md non-negotiable #5) — Postgres rows can always be `UPDATE`d by anyone with DB access; the hash chain doesn't prevent that, it makes it detectable. `hash = sha256(prev_hash + canonical_json(payload))`, and each record's `prev_hash` is exactly the previous record's stored `hash`. `canonical_json` always sorts keys before hashing — both at write time and at verify time — specifically so Postgres's JSONB column reordering keys internally can never look like tampering on its own.
+
+**Two tamper scenarios, both caught, at different points**:
+- *Naive* (edit `payload_json`, leave `hash`/`prev_hash` alone): caught immediately at that record — its stored hash no longer matches the recomputed one.
+- *Sophisticated* (edit `payload_json` and also recompute that record's own `hash` to hide the edit): that record's own hash now checks out, but the **next** record's `prev_hash` no longer matches — it was fixed at write time to the *original* hash value. Hiding a tamper completely requires re-deriving the entire chain from that point forward, not just one row.
+
+**Once broken, stays broken**: `verify_chain()` walks records in order; the first record whose payload or link doesn't check out is marked invalid, and every record after it is also marked invalid regardless of whether that later record's own hash math happens to still work — because it's chained off history that's no longer trustworthy. This is CLAUDE.md's literal Phase 6 spec: "manually mutating a row causes chain verification to fail on that record and every one after."
+
+**Not concurrency-safe** — `append()` reads the last record, computes the next hash, then inserts, with no DB-level lock around that sequence. Fine for this single-process demo; a real deployment would need a serializable transaction or row lock to prevent two concurrent appends both chaining off the same prior record. Documented as a known limitation, not silently ignored.
+
+**Verified live**: ran the full Phase 5 pipeline (12 audit events across 3 attempts + 1 incident), `verify()` reported all 12 valid; directly tampered `audit_log.id=7`'s `payload_json` via SQL; `verify()` correctly reported id=7 invalid with `"payload does not match this record's stored hash"`, and ids 8–12 invalid with `"chain already broken at an earlier record"` — both the Python-level `verify()` and the `GET /audit/verify` HTTP endpoint confirmed identical results.
+
 ## Evaluation
 
 Frozen 2026-08-31, Phase 2. Implementation: `backend/ml/{baselines,evaluate}.py`.
