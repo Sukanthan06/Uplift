@@ -1,0 +1,53 @@
+# Deterministic policy gate, read by app/services/policy_engine.py.
+#
+# This is a safety layer independent of the uplift model: even a model bug
+# or drift can't authorize retrying a fraud-flagged transaction, because
+# block_cause_families is checked regardless of what the model predicts.
+# See docs/DECISIONS.md (Phase 5) for why this is deliberately not just a
+# pass-through to the model's uplift>0 signal.
+
+policy_version: "v1"
+
+rules:
+  require_reconciliation:
+    description: >
+      Payment status must be reconciled as known-failed (CLAUDE.md
+      non-negotiable #2) before any retry decision is made.
+
+  block_cause_families:
+    description: >
+      Never retry these cause families, regardless of predicted uplift --
+      hard declines and fraud flags where retrying only wastes money.
+      Checked against the deterministic taxonomy.py classification for the
+      attempt's error_code, NEVER the LLM's own diagnosis.cause_family --
+      CLAUDE.md non-negotiable #1 says the LLM never makes money decisions,
+      and trusting its classification for a blocking gate would be exactly
+      that, one level removed. A live test caught the LLM disagreeing with
+      the taxonomy on a real example.
+    families:
+      - card_or_account_issue
+      - risk_fraud
+
+  require_diagnosis_confidence:
+    description: >
+      The LLM diagnosis must clear this confidence bar, independent of
+      block_cause_families above (which no longer depends on the LLM's
+      classification at all). A low-confidence diagnosis signals a
+      confusing or edge-case failure that deserves review rather than an
+      automated retry, even when uplift is positive and the deterministic
+      cause family isn't blocked.
+    min_confidence: 0.5
+
+  require_positive_uplift:
+    description: >
+      Only retry if the uplift model predicts positive uplift at its best
+      candidate offset. Delegated to app/services/scheduler.py, which
+      already implements this exact check.
+    min_uplift_best: 0.0
+
+  max_api_retries:
+    description: >
+      Hard cap on infra-level API retries per action on 5xx responses
+      (CLAUDE.md non-negotiable #4). Distinct from the business-level
+      decision above about whether/when to retry the payment.
+    max_attempts: 2

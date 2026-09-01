@@ -9,7 +9,7 @@ Built for the Razorpay AI Buildathon, Track 03 (AI Revenue Recovery).
 
 ## Status
 
-Phase 1 (Foundation), Phase 2 (Evaluation harness), Phase 3 (Uplift model), and Phase 4 (Sensitivity sweep) complete. Phase 5 (Reconciler + Diagnoser + Policy + Action) next.
+Phase 1 (Foundation), Phase 2 (Evaluation harness), Phase 3 (Uplift model), Phase 4 (Sensitivity sweep), and Phase 5 (Reconciler + Diagnoser + Policy + Action) complete. Phase 6 (Audit chain) next.
 
 ### Phase 2 results (honest, no ML yet)
 
@@ -47,11 +47,21 @@ The learned model **ties, doesn't beat**, the hand-picked rule (−0.5%). `uplif
 
 See `docs/DECISIONS.md` (Phase 4 entries) and `docs/DEMO_SCRIPT.md` for full discussion.
 
+### Phase 5 (reconciler, diagnoser, policy engine, action service)
+
+Run live via `python -m app.demo_pipeline` (real Postgres, real Groq LLM calls). Four services, chained: `reconciler` (mocked gateway, resolves timeout ambiguity from the simulator's hidden ground truth) → `diagnoser` (Groq, structured `FailureDiagnosis`, Pydantic-validated, retries on invalid) → `scorer`/`scheduler` (Phase 3's trained model) → `policy_engine` (deterministic gate) → `action_service` (idempotent, bounded-retry gateway call).
+
+**A live run caught a real bug the unit tests couldn't**: the LLM classified a `upi_invalid_account` decline (deterministically `card_or_account_issue`, a blocked hard decline) as `customer_error`. The first version of `policy_engine` trusted the LLM's own classification for its safety-critical block check and would have let that retry through. Fixed so the block check always uses the deterministic `taxonomy.py` classification, never the LLM's opinion — see `docs/DECISIONS.md`. This is the clearest evidence in the project that CLAUDE.md's "the LLM never makes money decisions" rule is load-bearing.
+
+**Retry-exhausted incident, verified live**: a client forced to always return 503 produces exactly 3 total attempts (1 initial + 2 retries, exponential backoff), then `outcome=retry_exhausted` — no infinite loop, a bounded, visible incident.
+
+**Stack deviation, logged not silent**: the diagnoser uses Groq (`openai/gpt-oss-120b`), not Anthropic — CLAUDE.md's stated stack, changed by explicit user direction this session. See `docs/DECISIONS.md`.
+
 ## Stack
 
 - Backend: FastAPI + Python 3.11, PostgreSQL, SQLAlchemy 2.0
 - ML: XGBoost (T-learner uplift model), Qini/uplift@k implemented manually (no causalml — unused, dropped)
-- LLM: Claude (Anthropic) for structured failure diagnosis
+- LLM: Groq (`openai/gpt-oss-120b`) for structured failure diagnosis — deviates from the originally planned Anthropic Claude, see `docs/DECISIONS.md` (Phase 5)
 - Frontend: Vite + React + TypeScript + Tailwind + Recharts
 
 See `ARCHITECTURE.md` for design details (added in Phase 8) and

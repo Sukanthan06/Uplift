@@ -7,7 +7,8 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
     database_url: str
-    anthropic_api_key: str = ""
+    groq_api_key: str = ""
+    groq_model: str = "openai/gpt-oss-120b"
     policy_version: str = "v1"
     env: str = "development"
 

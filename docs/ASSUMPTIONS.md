@@ -64,7 +64,26 @@ Frozen 2026-08-31, Phase 3. Implementation: `backend/ml/{features,train_uplift,e
 
 ## Policy
 
-_TBD — Phase 5._
+Frozen 2026-09-01, Phase 5. Implementation: `backend/app/services/{reconciler,diagnoser,policy_engine,action_service}.py`, `backend/app/config/policy.yaml`, `backend/app/schemas/diagnosis.py`.
+
+**Reconciliation runs first, always** (CLAUDE.md non-negotiable #2). The gateway lookup is mocked — no real Razorpay in this build — but the mock isn't a coin flip: for timeout-type codes (`taxonomy.TIMEOUT_AMBIGUOUS_CODES`) it consults the simulator's hidden `actually_succeeded_silently` ground truth (frozen in (d) above) for whether the charge actually went through despite being reported failed. This is not model leakage — a real gateway API call would honestly return the same answer for a real payment; the mock just answers from a file instead of a network request, and nothing here feeds the uplift model. For every other code, reconciliation is a pass-through confirming the already-known `failed` status.
+
+**LLM provider is Groq, not Anthropic** — CLAUDE.md's stated stack, changed by explicit user direction this session; see `docs/DECISIONS.md`. The diagnoser's job is strictly classification (CLAUDE.md non-negotiable #1: the LLM never makes money decisions) — `root_cause`, `cause_family`, `is_transient`, `confidence`, Pydantic-validated, retried up to 2 times on invalid/unparseable output before raising. Verified live against the real API for both a transient and a hard-decline example.
+
+**The policy engine's safety-critical block check never trusts the LLM's own classification** — it uses the deterministic `taxonomy.py` lookup on the attempt's `error_code` instead, passed in as a separate `cause_family` argument. This was a live-testing finding, not a design choice made in the abstract: the real Groq model disagreed with the taxonomy on a real example (classified a `card_or_account_issue` hard decline as `customer_error`), and the first version of the policy engine would have let that retry through. See `docs/DECISIONS.md` for the full story — it's the clearest illustration in this project of why CLAUDE.md's non-negotiable #1 matters operationally, not just architecturally.
+
+**`policy.yaml` v1 rules**, evaluated in order, any firing blocks the retry:
+1. `require_reconciliation` — must be known-failed (see above)
+2. `block_cause_families` — `card_or_account_issue`, `risk_fraud` never retried, regardless of predicted uplift (deterministic taxonomy classification, not the LLM's)
+3. `require_diagnosis_confidence` — LLM confidence must be ≥ 0.5, independent of the block check above; a low-confidence diagnosis signals an edge case that deserves review, not automated action
+4. `require_positive_uplift` — delegates to `scheduler.schedule()`'s existing `uplift_best > 0` check
+5. `max_api_retries: 2` — not a policy_engine gate; enforced by `action_service` on the infra-level HTTP call (see below)
+
+**Idempotency** (CLAUDE.md non-negotiable #3): `idempotency_key = sha256(payment_id + action_type + scheduled_time + policy_version)`. `action_service.execute_retry()` checks the `actions` table for an existing row with the same key before ever calling the gateway, and returns that row's result instead of re-executing — the actual "safe to call twice" guarantee, not just a deterministic key.
+
+**Retry budget** (CLAUDE.md non-negotiable #4): max 2 API retries on 5xx, exponential backoff (0.5s, 1s) between attempts, 3 total attempts max, then `outcome="retry_exhausted"` — an infra-level cap on the HTTP call itself, distinct from `policy_engine`'s business-level decision about whether to retry the payment at all. Verified live with a client that always returns 503: 3 attempts, `retry_exhausted`, no infinite loop.
+
+**Every decision is persisted**, not just approved retries — see `docs/DECISIONS.md`. A `decisions` row exists for every attempt that reaches the policy engine, whichever way it went.
 
 ## Evaluation
 
