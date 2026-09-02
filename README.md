@@ -105,6 +105,8 @@ Run live via `python -m app.demo_pipeline` (real Postgres, real Groq LLM calls).
 
 **Stack deviation, logged not silent**: the diagnoser uses Groq (`openai/gpt-oss-120b`), not Anthropic — CLAUDE.md's stated stack, changed by explicit user direction this session. See `docs/DECISIONS.md`.
 
+**Action service has a real backend, not just a mock.** `ACTION_MODE` (`.env`) selects one of three interchangeable backends behind the same `GatewayClient` interface: `mock` (default), `razorpay_test` (real HTTP to Razorpay's sandbox — verified live, a genuine `200` from creating a test order, persisted through the unmodified idempotency/retry logic), `off` (shadow mode, logs intent, calls nothing). Retry-budget exhaustion now also writes a row to a dedicated `incidents` table (a deliberate sixth table beyond CLAUDE.md's original five, confirmed before adding — see `docs/DECISIONS.md`).
+
 ### Phase 6 — audit chain
 
 `app/services/audit.py`: hash-chained, tamper-*evident* — never "immutable," Postgres rows can always be edited; the chain makes edits detectable. `GET /audit/verify` walks the chain and reports which records are valid.

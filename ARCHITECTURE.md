@@ -39,9 +39,9 @@ expensive on request.
 | Diagnoser | `app/services/diagnoser.py` | LLM (Groq) converts a decline code into a structured, Pydantic-validated `FailureDiagnosis`. Classification only — never a retry/no-retry decision or a monetary figure. | Yes (Groq API) |
 | Scorer / Scheduler | `app/services/scorer.py`, `scheduler.py` | Loads the trained T-learner, returns `uplift(now)` and `uplift(best_time)` for an attempt; turns that into a candidate retry timestamp. | No |
 | Policy engine | `app/services/policy_engine.py`, `app/config/policy.yaml` | Deterministic gate. Reconciliation must be resolved; hard declines/fraud are blocked by a **deterministic taxonomy lookup**, never the LLM's own classification; diagnosis confidence and predicted uplift must both clear a bar. | No |
-| Action service | `app/services/action_service.py` | The only thing that talks to an external payment API. Idempotency key = `sha256(payment_id + action_type + scheduled_time + policy_version)`, checked against existing `actions` rows before ever calling out again. Max 2 retries on 5xx, exponential backoff, then a bounded `retry_exhausted` incident. | Mocked |
+| Action service | `app/services/action_service.py`, `action_razorpay.py` | The only thing that talks to an external payment API. Idempotency key (`app/services/idempotency.py`) = `sha256(payment_id + action_type + scheduled_time + policy_version)`, checked against existing `actions` rows before ever calling out again. Max 2 retries on 5xx, exponential backoff, then a bounded `retry_exhausted` incident (written to the `incidents` table). Three interchangeable backends behind one `GatewayClient` protocol, selected via `ACTION_MODE`: `mock` (default, deterministic), `razorpay_test` (real HTTP to Razorpay's sandbox, test-key enforced), `off` (shadow — logs intent, calls nothing). | Mocked by default; real (sandbox) when `ACTION_MODE=razorpay_test` |
 | Audit | `app/services/audit.py`, `app/api/audit.py` | Hash-chained, tamper-*evident* log. `verify_chain()` is a pure function (no DB dependency) so tamper detection is unit-tested directly. | No |
-| Pipeline orchestrator | `app/services/pipeline.py` | Chains all of the above into one `run_pipeline()` call, persisting a row in every relevant table plus an audit event at every stage. Used by both the CLI demo script and the dashboard's live batch endpoint — one implementation. | Transitively (Groq, mocked gateway) |
+| Pipeline orchestrator | `app/services/pipeline.py` | Chains all of the above into one `run_pipeline()` call, persisting a row in every relevant table plus an audit event at every stage. Used by both the CLI demo script and the dashboard's live batch endpoint — one implementation. | Transitively (Groq, action service per `ACTION_MODE`) |
 | Dashboard | `frontend/src/` | Single page, four tabs, client-side tab switching (no router). Reads exclusively from the FastAPI backend. | No |
 
 ## Data model
@@ -107,7 +107,7 @@ this project doesn't have.
 | LLM diagnosis | Real Groq API calls, real structured output | — |
 | Uplift model | Real XGBoost training on real (simulated) data | — |
 | Gateway status lookup (reconciler) | — | Mocked, but not arbitrarily — resolves from the simulator's own hidden ground truth for timeout-ambiguous codes, so it answers the way a real gateway honestly would |
-| Payment retry API (action_service) | — | Mocked; a deliberately-503 client exists specifically to demo the retry-exhausted incident path |
+| Payment retry API (action_service) | Real, when `ACTION_MODE=razorpay_test` — genuine sandbox HTTP calls, verified live | Default (`ACTION_MODE=mock`); a deliberately-503 client exists specifically to demo the retry-exhausted incident path |
 | Audit chain | Real hash-chained Postgres writes, real tamper detection | — |
 
 ## Where to go next in the docs
