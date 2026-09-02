@@ -54,6 +54,7 @@ export interface OverviewResponse {
     actions_by_outcome: Record<string, number>
     audit_records: number
     audit_all_valid: boolean
+    open_incidents: number
   }
 }
 

@@ -55,6 +55,7 @@ class PipelineActivity(BaseModel):
     actions_by_outcome: dict[str, int]
     audit_records: int
     audit_all_valid: bool
+    open_incidents: int
 
 
 class Phase3Result(BaseModel):
@@ -100,7 +101,7 @@ def _simulator_stats(session) -> SimulatorStats:
 
 
 def _pipeline_activity(session) -> PipelineActivity:
-    from app.models import Action, Decision
+    from app.models import Action, Decision, Incident
     from app.services.audit import verify
 
     decisions_by_action: dict[str, int] = {}
@@ -112,11 +113,13 @@ def _pipeline_activity(session) -> PipelineActivity:
         actions_by_outcome[outcome] = actions_by_outcome.get(outcome, 0) + 1
 
     audit_results = verify(session=session)
+    open_incidents = session.query(Incident).filter(Incident.resolved_at.is_(None)).count()
     return PipelineActivity(
         decisions_by_action=decisions_by_action,
         actions_by_outcome=actions_by_outcome,
         audit_records=len(audit_results),
         audit_all_valid=all(r.valid for r in audit_results),
+        open_incidents=open_incidents,
     )
 
 
