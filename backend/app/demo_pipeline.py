@@ -10,6 +10,7 @@ docs/DEMO_SCRIPT.md's "inject 503, show retry-exhausted incident" and
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from decimal import Decimal
 
 from app.db import SessionLocal
 from app.models import Decision, PaymentAttempt
@@ -49,7 +50,7 @@ class _AlwaysDownClient:
     """Deliberately simulates a gateway that never recovers -- exercises the
     retry-exhausted / incident path on demand."""
 
-    def retry_payment(self, payment_id: str) -> int:
+    def retry_payment(self, payment_id: str, amount: Decimal, currency: str = "INR") -> int:
         return 503
 
 
@@ -63,6 +64,7 @@ def demo_retry_exhausted() -> None:
         )
         if any_attempt is None:
             raise RuntimeError("no failed payment_attempts found -- run the simulator first")
+        amount = any_attempt.amount  # read while still attached to this session
         decision_row = Decision(
             payment_id=any_attempt.id,
             uplift_now=0.1,
@@ -84,6 +86,7 @@ def demo_retry_exhausted() -> None:
         decision_id=decision_id,
         policy_version="v1",
         scheduled_time=datetime.now(UTC).isoformat(),
+        amount=amount,
         client=_AlwaysDownClient(),
         sleep_fn=lambda seconds: None,  # instant for the demo
     )
