@@ -147,6 +147,7 @@ def run_pipeline(row: PaymentAttempt) -> PipelineResult:
             decision_id=decision_row.id,
             policy_version=decision.policy_version,
             scheduled_time=decision.best_retry_time.isoformat(),
+            amount=row.amount,
         )
         action_outcome = result.outcome
         action_http_status = result.http_status
