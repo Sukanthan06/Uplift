@@ -16,6 +16,7 @@ build/
 .DS_Store
 
 CLAUDE.md
+action-service-extension.md
 
 backend/simulator/output/
 backend/ml/output/

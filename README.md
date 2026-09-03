@@ -103,7 +103,9 @@ Run live via `python -m app.demo_pipeline` (real Postgres, real Groq LLM calls).
 
 **Retry-exhausted incident, verified live**: a client forced to always return 503 produces exactly 3 total attempts (1 initial + 2 retries, exponential backoff), then `outcome=retry_exhausted` — no infinite loop, a bounded, visible incident.
 
-**Stack deviation, logged not silent**: the diagnoser uses Groq (`openai/gpt-oss-120b`), not Anthropic — CLAUDE.md's stated stack, changed by explicit user direction this session. See `docs/DECISIONS.md`.
+**Stack deviation, logged not silent**: the diagnoser uses Groq (`openai/gpt-oss-120b`), not the LLM vendor originally specified in `CLAUDE.md` — changed by explicit user direction this session. See `docs/DECISIONS.md`.
+
+**Action service has a real backend, not just a mock.** `ACTION_MODE` (`.env`) selects one of three interchangeable backends behind the same `GatewayClient` interface: `mock` (default), `razorpay_test` (real HTTP to Razorpay's sandbox — verified live, a genuine `200` from creating a test order, persisted through the unmodified idempotency/retry logic), `off` (shadow mode, logs intent, calls nothing). Retry-budget exhaustion now also writes a row to a dedicated `incidents` table (a deliberate sixth table beyond CLAUDE.md's original five, confirmed before adding — see `docs/DECISIONS.md`).
 
 ### Phase 6 — audit chain
 
@@ -128,8 +130,27 @@ Verified live in an actual browser (Playwright + Chromium, no console errors): a
 
 - Backend: FastAPI + Python 3.11, PostgreSQL, SQLAlchemy 2.0
 - ML: XGBoost (T-learner uplift model), Qini/uplift@k implemented manually (no causalml — unused, dropped)
-- LLM: Groq (`openai/gpt-oss-120b`) for structured failure diagnosis — deviates from the originally planned Anthropic Claude, see `docs/DECISIONS.md` (Phase 5)
+- LLM: Groq (`openai/gpt-oss-120b`) for structured failure diagnosis — deviates from the LLM vendor originally specified in `CLAUDE.md`, see `docs/DECISIONS.md` (Phase 5)
 - Frontend: Vite + React + TypeScript + Tailwind + Recharts
+
+```mermaid
+flowchart TD
+    A[Simulator<br/>50k payment attempts] --> B[Reconciler]
+    B -->|known-failed| C[Diagnoser<br/>Groq LLM]
+    B -->|status unknown/success| Z[Blocked: no retry]
+    C --> D[Scorer<br/>XGBoost T-learner]
+    D --> E[Policy engine<br/>deterministic gate]
+    E -->|retry| F[Action service<br/>Razorpay sandbox / mock]
+    E -->|no_retry| Z
+    F -->|budget exhausted| J[Incident]
+    F --> G[(PostgreSQL<br/>SQLAlchemy, 6 tables)]
+    B --> G
+    C --> G
+    E --> G
+    J --> G
+    G --> H[Audit log<br/>hash chain]
+    G --> I[Dashboard<br/>React + Recharts]
+```
 
 See `ARCHITECTURE.md` for system design and `docs/DECISIONS.md` for
 rationale behind every non-obvious technical choice.

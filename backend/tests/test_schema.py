@@ -1,7 +1,9 @@
 from app.models import Base
 
 
-def test_all_five_tables_registered_on_metadata() -> None:
+def test_all_tables_registered_on_metadata() -> None:
+    # CLAUDE.md's original five, plus `incidents` -- a deliberate, confirmed
+    # extension beyond the original schema (see docs/DECISIONS.md).
     expected = {
         "payment_attempts",
         "reconciliations",
@@ -9,6 +11,7 @@ def test_all_five_tables_registered_on_metadata() -> None:
         "decisions",
         "actions",
         "audit_log",
+        "incidents",
     }
     assert expected == set(Base.metadata.tables)
 

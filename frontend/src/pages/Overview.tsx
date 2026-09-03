@@ -62,7 +62,7 @@ export default function Overview() {
 
   return (
     <div className="space-y-6">
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
         <StatTile label="Total attempts" value={formatNumber(data.simulator.total_attempts, 0)} />
         <StatTile label="Failed attempts" value={formatNumber(data.simulator.failed_attempts, 0)} />
         <StatTile
@@ -77,6 +77,11 @@ export default function Overview() {
             0
           )}
           sub="from Batch Run"
+        />
+        <StatTile
+          label="Open incidents"
+          value={formatNumber(data.pipeline_activity.open_incidents, 0)}
+          sub="retry budget exhausted"
         />
       </div>
 
