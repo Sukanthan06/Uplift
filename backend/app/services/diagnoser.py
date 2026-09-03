@@ -1,8 +1,8 @@
 """LLM diagnoser: decline code -> structured FailureDiagnosis.
 
 CLAUDE.md non-negotiable #1: the LLM never makes money decisions here --
-it only classifies. Uses Groq, not Anthropic (see docs/DECISIONS.md for why
-this deviates from CLAUDE.md's originally stated stack). Structured output
+it only classifies. Uses Groq, not the vendor originally specified in
+CLAUDE.md's stack (see docs/DECISIONS.md for why). Structured output
 is Pydantic-validated; invalid/unparseable responses are retried up to
 MAX_LLM_RETRIES times before raising, per CLAUDE.md Phase 5.
 

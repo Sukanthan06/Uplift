@@ -17,10 +17,12 @@ flowchart TD
     D --> E[policy_engine]
     E -->|retry| F[action_service]
     E -->|no_retry| Z
-    F --> G[(Postgres: 5 tables)]
+    F -->|retry budget exhausted| J[incidents]
+    F --> G[(Postgres: 6 tables)]
     B --> G
     C --> G
     E --> G
+    J --> G
     G --> H[audit_log: hash chain]
     G --> I[dashboard: 4 pages]
 ```
@@ -46,9 +48,12 @@ expensive on request.
 
 ## Data model
 
-Five tables (`backend/app/models/`), matching the five stages of the
+Six tables (`backend/app/models/`), matching the five stages of the
 pipeline: `payment_attempts` → `reconciliations` → `diagnoses` → `decisions`
-→ `actions`, plus the cross-cutting `audit_log`. All primary keys are
+→ `actions`, plus the cross-cutting `audit_log` and the `incidents` table
+(written when the action service's retry budget is exhausted — a deliberate
+sixth table beyond CLAUDE.md's original five, see `docs/DECISIONS.md`). All
+primary keys are
 auto-incrementing `BIGINT` (not UUID) — deliberate, because `audit_log`'s
 hash chain gets free insertion ordering from it (`ORDER BY id`), and this is
 a single-writer batch/simulator system where UUID's collision-avoidance
