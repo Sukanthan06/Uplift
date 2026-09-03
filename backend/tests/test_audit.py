@@ -1,7 +1,10 @@
+from app.models import AuditLog
 from app.services.audit import (
     GENESIS_PREV_HASH,
     AuditRecord,
     _compute_hash,
+    append,
+    verify,
     verify_chain,
 )
 
@@ -94,3 +97,39 @@ def test_different_payload_produces_different_hash() -> None:
     h1 = _compute_hash(GENESIS_PREV_HASH, {"event": "a"})
     h2 = _compute_hash(GENESIS_PREV_HASH, {"event": "b"})
     assert h1 != h2
+
+
+def test_append_first_record_chains_off_genesis(fake_session) -> None:
+    row = append({"event": "a"}, session=fake_session)
+    assert row.prev_hash == GENESIS_PREV_HASH
+    assert row.hash == _compute_hash(GENESIS_PREV_HASH, {"event": "a"})
+
+
+def test_append_second_record_chains_off_the_first(fake_session) -> None:
+    first = append({"event": "a"}, session=fake_session)
+    second = append({"event": "b"}, session=fake_session)
+    assert second.prev_hash == first.hash
+    assert second.hash == _compute_hash(first.hash, {"event": "b"})
+
+
+def test_verify_reports_all_valid_for_untampered_appends(fake_session) -> None:
+    append({"event": "a"}, session=fake_session)
+    append({"event": "b"}, session=fake_session)
+    append({"event": "c"}, session=fake_session)
+    results = verify(session=fake_session)
+    assert len(results) == 3
+    assert all(r.valid for r in results)
+
+
+def test_verify_detects_a_direct_row_tamper(fake_session) -> None:
+    append({"event": "a"}, session=fake_session)
+    second = append({"event": "b"}, session=fake_session)
+    append({"event": "c"}, session=fake_session)
+
+    row = next(r for r in fake_session.rows_of(AuditLog) if r.id == second.id)
+    row.payload_json = {"event": "TAMPERED"}
+
+    results = verify(session=fake_session)
+    assert results[0].valid is True
+    assert results[1].valid is False
+    assert results[2].valid is False

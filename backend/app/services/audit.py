@@ -21,9 +21,18 @@ from __future__ import annotations
 import hashlib
 import json
 from dataclasses import dataclass
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+from app.logging import get_logger
+
+if TYPE_CHECKING:
+    from sqlalchemy.orm import Session
+
+    from app.models import AuditLog
 
 GENESIS_PREV_HASH = "0" * 64
+
+logger = get_logger(__name__)
 
 
 def _canonical_json(payload: dict[str, Any]) -> str:
@@ -89,17 +98,20 @@ def verify_chain(records: list[AuditRecord]) -> list[AuditRecordResult]:
     return results
 
 
-def append(payload: dict[str, Any], session=None):
+def append(payload: dict[str, Any], session: Session | None = None) -> AuditLog:
     """Not safe for concurrent writers -- single-process/demo assumption,
     see docs/DECISIONS.md. A real deployment would need a DB-level lock or
     serializable transaction around the read-last/compute-hash/insert
     sequence to avoid two concurrent appends both chaining off the same
-    prior record."""
-    from app.db import SessionLocal
+    prior record. session is injectable for testing -- when provided,
+    this function never touches app.db/settings at all."""
     from app.models import AuditLog
 
     owns_session = session is None
-    session = session or SessionLocal()
+    if owns_session:
+        from app.db import SessionLocal
+
+        session = SessionLocal()
     try:
         last = session.query(AuditLog).order_by(AuditLog.id.desc()).first()
         prev_hash = last.hash if last is not None else GENESIS_PREV_HASH
@@ -109,25 +121,38 @@ def append(payload: dict[str, Any], session=None):
         session.add(row)
         session.commit()
         session.refresh(row)
+        logger.info("audit_append_finished", audit_event=payload.get("event"), record_id=row.id)
         return row
     finally:
         if owns_session:
             session.close()
 
 
-def verify(session=None) -> list[AuditRecordResult]:
-    from app.db import SessionLocal
+def verify(session: Session | None = None) -> list[AuditRecordResult]:
+    """Walk the whole chain from Postgres and report which records are
+    valid -- see verify_chain() for the actual tamper-detection logic."""
     from app.models import AuditLog
 
     owns_session = session is None
-    session = session or SessionLocal()
+    if owns_session:
+        from app.db import SessionLocal
+
+        session = SessionLocal()
     try:
         rows = session.query(AuditLog).order_by(AuditLog.id.asc()).all()
         records = [
             AuditRecord(id=r.id, payload_json=r.payload_json, prev_hash=r.prev_hash, hash=r.hash)
             for r in rows
         ]
-        return verify_chain(records)
+        results = verify_chain(records)
+        all_valid = all(r.valid for r in results)
+        logger.info(
+            "audit_verify_finished",
+            total_records=len(results),
+            all_valid=all_valid,
+            first_invalid_id=next((r.id for r in results if not r.valid), None),
+        )
+        return results
     finally:
         if owns_session:
             session.close()
