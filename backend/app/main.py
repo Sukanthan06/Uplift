@@ -5,6 +5,9 @@ from app.api.audit import router as audit_router
 from app.api.batch import router as batch_router
 from app.api.decisions import router as decisions_router
 from app.api.overview import router as overview_router
+from app.logging import configure_logging
+
+configure_logging()
 
 app = FastAPI(title="Uplift", version="0.1.0")
 
