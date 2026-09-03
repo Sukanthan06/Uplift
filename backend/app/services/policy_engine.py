@@ -26,11 +26,14 @@ from pathlib import Path
 
 import yaml
 
+from app.logging import get_logger
 from app.schemas.diagnosis import FailureDiagnosis
 from app.services.scheduler import schedule
 from app.services.scorer import UpliftScore
 
 POLICY_PATH = Path(__file__).parent.parent / "config" / "policy.yaml"
+
+logger = get_logger(__name__)
 
 
 @dataclass(frozen=True)
@@ -63,7 +66,18 @@ def decide(
     policy_version = policy["policy_version"]
     rules_fired: list[str] = []
 
+    logger.info(
+        "policy_decision_started",
+        is_known_failed=is_known_failed,
+        cause_family=cause_family,
+        diagnosis_confidence=diagnosis.confidence,
+        uplift_now=uplift_score.uplift_now,
+        uplift_best=uplift_score.uplift_best,
+        policy_version=policy_version,
+    )
+
     def _no_retry() -> PolicyDecision:
+        logger.info("policy_decision_finished", chosen_action="no_retry", rules_fired=rules_fired)
         return PolicyDecision(
             chosen_action="no_retry",
             rules_fired=rules_fired,
@@ -92,6 +106,12 @@ def decide(
     if rules_fired:
         return _no_retry()
 
+    logger.info(
+        "policy_decision_finished",
+        chosen_action="retry",
+        rules_fired=[],
+        best_retry_time=retry_decision.scheduled_for,
+    )
     return PolicyDecision(
         chosen_action="retry",
         rules_fired=[],
