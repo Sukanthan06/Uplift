@@ -14,6 +14,7 @@ strings, so the test suite never makes a network call.
 from __future__ import annotations
 
 import json
+import time
 from functools import lru_cache
 from typing import Any, Protocol
 
@@ -21,7 +22,10 @@ from groq import Groq
 from pydantic import ValidationError
 
 from app.config.settings import get_settings
+from app.logging import get_logger
 from app.schemas.diagnosis import FailureDiagnosis
+
+logger = get_logger(__name__)
 
 MAX_LLM_RETRIES = 2
 
@@ -60,6 +64,8 @@ class GroqClient:
         self._model = model
 
     def complete(self, prompt: str) -> str:
+        """Send prompt to the configured LLM provider, return its raw text response."""
+        started = time.monotonic()
         response = self._client.chat.completions.create(
             model=self._model,
             messages=[
@@ -68,6 +74,12 @@ class GroqClient:
             ],
             temperature=0.0,
             response_format={"type": "json_object"},
+        )
+        logger.info(
+            "llm_call_completed",
+            provider="groq",
+            model=self._model,
+            latency_ms=round((time.monotonic() - started) * 1000, 1),
         )
         return response.choices[0].message.content
 
@@ -92,17 +104,39 @@ def diagnose(attempt: dict[str, Any], client: LLMClient | None = None) -> Failur
     Raises ValueError after MAX_LLM_RETRIES consecutive invalid responses."""
     client = client or _default_client()
     prompt = _build_prompt(attempt)
+    error_code = attempt["error_code"]
+    logger.info("diagnose_started", error_code=error_code, method=attempt["method"])
 
     last_error: Exception | None = None
-    for _ in range(1 + MAX_LLM_RETRIES):
+    for attempt_no in range(1, 2 + MAX_LLM_RETRIES):
         raw = client.complete(prompt)
         try:
             payload = json.loads(raw)
-            return FailureDiagnosis.model_validate(payload)
+            diagnosis = FailureDiagnosis.model_validate(payload)
         except (json.JSONDecodeError, ValidationError) as exc:
             last_error = exc
+            logger.warning(
+                "diagnose_response_invalid",
+                error_code=error_code,
+                attempt_no=attempt_no,
+                exc_info=exc,
+            )
             continue
+        logger.info(
+            "diagnose_finished",
+            error_code=error_code,
+            cause_family=diagnosis.cause_family,
+            is_transient=diagnosis.is_transient,
+            confidence=diagnosis.confidence,
+        )
+        return diagnosis
 
+    logger.error(
+        "diagnose_failed",
+        error_code=error_code,
+        attempts=1 + MAX_LLM_RETRIES,
+        exc_info=last_error,
+    )
     raise ValueError(
         f"diagnoser: LLM produced no valid FailureDiagnosis after {1 + MAX_LLM_RETRIES} attempts"
     ) from last_error
