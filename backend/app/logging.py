@@ -23,7 +23,9 @@ def configure_logging(level: int = logging.INFO) -> None:
             structlog.processors.TimeStamper(fmt="iso"),
             structlog.processors.StackInfoRenderer(),
             structlog.processors.format_exc_info,
-            structlog.processors.JSONRenderer(),
+            # default=str: log fields routinely carry datetime/Decimal values
+            # (scheduled_for, amount) that json.dumps can't serialize natively.
+            structlog.processors.JSONRenderer(default=str),
         ],
         wrapper_class=structlog.make_filtering_bound_logger(level),
         context_class=dict,
