@@ -342,6 +342,7 @@ TIMEOUT_AMBIGUOUS_CODES: frozenset[str] = frozenset(
 
 
 def codes_for_method(method: str) -> tuple[DeclineCode, ...]:
+    """Every DeclineCode registered for method. Raises KeyError if none are."""
     codes = tuple(c for c in DECLINE_TAXONOMY if c.method == method)
     if not codes:
         raise KeyError(f"no decline codes registered for method {method!r}")
@@ -349,6 +350,7 @@ def codes_for_method(method: str) -> tuple[DeclineCode, ...]:
 
 
 def get(code: str, method: str) -> DeclineCode:
+    """The DeclineCode for (code, method). Raises KeyError if unregistered."""
     for c in DECLINE_TAXONOMY:
         if c.code == code and c.method == method:
             return c
