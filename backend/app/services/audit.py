@@ -61,6 +61,9 @@ class AuditRecordResult:
     id: int
     valid: bool
     reason: str | None  # None when valid
+    event: str | None = None  # payload_json's own "event" field, for display
+    order_id: str | None = None
+    hash: str = ""
 
 
 def verify_chain(records: list[AuditRecord]) -> list[AuditRecordResult]:
@@ -92,7 +95,16 @@ def verify_chain(records: list[AuditRecord]) -> list[AuditRecordResult]:
         elif not chain_ok:
             reason = "chain already broken at an earlier record"
 
-        results.append(AuditRecordResult(id=record.id, valid=chain_ok, reason=reason))
+        results.append(
+            AuditRecordResult(
+                id=record.id,
+                valid=chain_ok,
+                reason=reason,
+                event=record.payload_json.get("event"),
+                order_id=record.payload_json.get("order_id"),
+                hash=record.hash,
+            )
+        )
         expected_prev_hash = record.hash
 
     return results
