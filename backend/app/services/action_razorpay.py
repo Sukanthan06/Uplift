@@ -20,9 +20,14 @@ be an inconsistent island. See docs/DECISIONS.md.
 
 from __future__ import annotations
 
+import time
 from decimal import Decimal
 
 import httpx
+
+from app.logging import get_logger
+
+logger = get_logger(__name__)
 
 
 class RazorpayGatewayClient:
@@ -31,6 +36,7 @@ class RazorpayGatewayClient:
     never be used to place real charges through this path."""
 
     def __init__(self, api_key: str, api_secret: str, endpoint: str) -> None:
+        """Raises ValueError if api_key is not a test-mode key (rzp_test_*)."""
         if not api_key.startswith("rzp_test_"):
             raise ValueError(
                 "RazorpayGatewayClient requires a test-mode API key (rzp_test_*)."
@@ -47,6 +53,7 @@ class RazorpayGatewayClient:
         retry/backoff loop handles 5xx retries and budget exhaustion
         unchanged, exactly as it does for the mock client."""
         amount_paise = int(amount * 100)
+        started = time.monotonic()
         try:
             response = self._client.post(
                 "/orders",
@@ -57,13 +64,26 @@ class RazorpayGatewayClient:
                     "notes": {"source": "uplift-action-service-retry"},
                 },
             )
-        except httpx.RequestError:
+        except httpx.RequestError as exc:
             # Network-level failure (timeout, connection refused, DNS,
             # etc.) is indistinguishable from a gateway outage for retry
             # purposes -- treat it as a 5xx so the existing backoff loop
             # retries it within budget, same as a real 503 would be.
+            logger.warning(
+                "gateway_http_call_failed",
+                payment_id=payment_id,
+                latency_ms=round((time.monotonic() - started) * 1000, 1),
+                exc_info=exc,
+            )
             return 503
+        logger.info(
+            "gateway_http_call_completed",
+            payment_id=payment_id,
+            http_status=response.status_code,
+            latency_ms=round((time.monotonic() - started) * 1000, 1),
+        )
         return response.status_code
 
     def close(self) -> None:
+        """Release the underlying HTTP connection pool."""
         self._client.close()

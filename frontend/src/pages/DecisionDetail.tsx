@@ -6,7 +6,7 @@ import {
   type DecisionSummary,
 } from '../api'
 import SectionCard from '../components/SectionCard'
-import { formatInr } from '../format'
+import { formatInr, formatTimestamp } from '../format'
 
 function ActionBadge({ action }: { action: string }) {
   return (
@@ -24,6 +24,7 @@ function ActionBadge({ action }: { action: string }) {
 
 export default function DecisionDetail() {
   const [decisions, setDecisions] = useState<DecisionSummary[]>([])
+  const [query, setQuery] = useState('')
   const [selectedId, setSelectedId] = useState<number | null>(null)
   const [detail, setDetail] = useState<DecisionDetailType | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -48,16 +49,34 @@ export default function DecisionDetail() {
     return <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">{error}</div>
   }
 
+  const filtered = decisions.filter((d) =>
+    d.order_id.toLowerCase().includes(query.trim().toLowerCase())
+  )
+
   return (
     <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
       <SectionCard title={`Decisions (${decisions.length})`}>
-        {decisions.length === 0 && (
+        {decisions.length === 0 ? (
           <p className="text-sm text-gray-500">
             None yet -- run a batch on the Batch Run page first.
           </p>
+        ) : (
+          <>
+            <input
+              type="text"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Search by payment ID"
+              aria-label="Search by payment ID"
+              className="mb-3 w-full rounded border border-gray-300 px-3 py-1.5 text-sm placeholder:text-gray-400"
+            />
+            {filtered.length === 0 && (
+              <p className="text-sm text-gray-500">No payment ID matches "{query}".</p>
+            )}
+          </>
         )}
         <ul className="max-h-[32rem] divide-y divide-gray-100 overflow-y-auto">
-          {decisions.map((d) => (
+          {filtered.map((d) => (
             <li key={d.decision_id}>
               <button
                 onClick={() => setSelectedId(d.decision_id)}
@@ -154,7 +173,7 @@ export default function DecisionDetail() {
                   <li key={event.id} className="rounded border border-gray-100 bg-gray-50 p-2 text-xs">
                     <span className="font-mono text-gray-400">#{event.id}</span>{' '}
                     <span className="font-medium">{String(event.payload_json.event)}</span>{' '}
-                    <span className="text-gray-500">{new Date(event.created_at).toLocaleTimeString()}</span>
+                    <span className="text-gray-500">{formatTimestamp(event.created_at)}</span>
                   </li>
                 ))}
               </ol>

@@ -12,6 +12,9 @@ class AuditVerifyRecord(BaseModel):
     id: int
     valid: bool
     reason: str | None
+    event: str | None
+    order_id: str | None
+    hash: str
 
 
 class AuditVerifyResponse(BaseModel):
@@ -27,7 +30,17 @@ def _to_response(results: list[AuditRecordResult]) -> AuditVerifyResponse:
         total_records=len(results),
         all_valid=all(r.valid for r in results),
         first_invalid_id=first_invalid,
-        records=[AuditVerifyRecord(id=r.id, valid=r.valid, reason=r.reason) for r in results],
+        records=[
+            AuditVerifyRecord(
+                id=r.id,
+                valid=r.valid,
+                reason=r.reason,
+                event=r.event,
+                order_id=r.order_id,
+                hash=r.hash,
+            )
+            for r in results
+        ],
     )
 
 

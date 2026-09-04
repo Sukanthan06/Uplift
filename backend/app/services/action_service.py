@@ -28,11 +28,18 @@ concept. See docs/DECISIONS.md.
 from __future__ import annotations
 
 import time
+from collections.abc import Callable
 from dataclasses import dataclass
 from decimal import Decimal
-from typing import Protocol
+from typing import TYPE_CHECKING, Protocol
 
+from app.logging import get_logger
 from app.services.idempotency import build_idempotency_key
+
+if TYPE_CHECKING:
+    from sqlalchemy.orm import Session
+
+logger = get_logger(__name__)
 
 MAX_API_RETRIES = 2
 BASE_BACKOFF_SECONDS = 0.5
@@ -88,7 +95,11 @@ def _default_client() -> GatewayClient:
 
 
 def _attempt_gateway_call(
-    payment_id: str, amount: Decimal, currency: str, client: GatewayClient, sleep_fn
+    payment_id: str,
+    amount: Decimal,
+    currency: str,
+    client: GatewayClient,
+    sleep_fn: Callable[[float], None],
 ) -> tuple[int, int | None, str]:
     """One full call sequence: the initial attempt plus up to
     MAX_API_RETRIES retries on 5xx, exponential backoff between them.
@@ -96,7 +107,15 @@ def _attempt_gateway_call(
     status: int | None = None
     attempt_no = 0
     for attempt_no in range(1, MAX_API_RETRIES + 2):
+        started = time.monotonic()
         status = client.retry_payment(payment_id, amount, currency)
+        logger.info(
+            "gateway_call_completed",
+            payment_id=payment_id,
+            attempt_no=attempt_no,
+            http_status=status,
+            latency_ms=round((time.monotonic() - started) * 1000, 1),
+        )
         if status < 500:
             return attempt_no, status, ("success" if status < 300 else "failed")
         if attempt_no <= MAX_API_RETRIES:
@@ -112,19 +131,35 @@ def execute_retry(
     amount: Decimal = Decimal(0),
     currency: str = "INR",
     client: GatewayClient | None = None,
-    sleep_fn=time.sleep,
-    session=None,
+    sleep_fn: Callable[[float], None] = time.sleep,
+    session: Session | None = None,
 ) -> ActionResult:
-    from app.db import SessionLocal
+    """Safe to call twice with the same (payment_id, scheduled_time,
+    policy_version): the second call returns the first's persisted result
+    instead of calling the gateway again. session is injectable for
+    testing -- when provided, this function never touches app.db/settings
+    at all, so it can run against a fake session with no DATABASE_URL
+    configured."""
     from app.models import Action, Incident
 
     key = build_idempotency_key(payment_id, "retry", scheduled_time, policy_version)
+    logger.info("execute_retry_started", payment_id=payment_id, idempotency_key=key)
 
     owns_session = session is None
-    session = session or SessionLocal()
+    if owns_session:
+        from app.db import SessionLocal
+
+        session = SessionLocal()
     try:
         existing = session.query(Action).filter(Action.idempotency_key == key).first()
         if existing is not None:
+            logger.info(
+                "execute_retry_finished",
+                payment_id=payment_id,
+                idempotency_key=key,
+                outcome=existing.outcome,
+                replayed=True,
+            )
             return ActionResult(
                 idempotency_key=existing.idempotency_key,
                 api_attempt_no=existing.api_attempt_no,
@@ -162,8 +197,21 @@ def execute_retry(
                     f"last HTTP status {status}",
                 )
             )
+            logger.error(
+                "retry_budget_exhausted",
+                payment_id=payment_id,
+                attempts=attempt_no,
+                last_status=status,
+            )
 
         session.commit()
+        logger.info(
+            "execute_retry_finished",
+            payment_id=payment_id,
+            idempotency_key=key,
+            outcome=outcome,
+            replayed=False,
+        )
         return ActionResult(
             idempotency_key=key, api_attempt_no=attempt_no, http_status=status, outcome=outcome
         )

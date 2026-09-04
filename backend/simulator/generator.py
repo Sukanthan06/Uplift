@@ -32,6 +32,8 @@ BANK_MEDIATED_METHODS = ("card", "netbanking", "upi")
 
 
 def load_config() -> dict:
+    """Parse sim_config.yaml -- the single source of truth for every
+    simulator assumption (see docs/ASSUMPTIONS.md)."""
     return yaml.safe_load(CONFIG_PATH.read_text())
 
 
@@ -103,6 +105,11 @@ def _recovery_probabilities(
 
 
 def generate(config: dict | None = None) -> list[GeneratedRow]:
+    """Generate the full simulated payment-attempt population per config
+    (default: sim_config.yaml). Every failed attempt also gets a hidden
+    ground-truth recovery curve, kept in GeneratedRow.ground_truth --
+    callers that persist payment_attempt must never also persist
+    ground_truth (see the module docstring)."""
     cfg = config or load_config()
     rng = random.Random(cfg["random_seed"])
 
@@ -230,6 +237,9 @@ def generate(config: dict | None = None) -> list[GeneratedRow]:
 
 
 def run(output_dir: Path | None = None) -> None:
+    """Generate the population, bulk-insert payment_attempts into Postgres,
+    and write hidden ground truth to output_dir/ground_truth.jsonl --
+    outside the application database, per the module docstring."""
     from app.db import engine
     from app.models import PaymentAttempt
 

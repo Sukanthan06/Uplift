@@ -123,7 +123,14 @@ export interface AuditVerifyResponse {
   total_records: number
   all_valid: boolean
   first_invalid_id: number | null
-  records: { id: number; valid: boolean; reason: string | null }[]
+  records: {
+    id: number
+    valid: boolean
+    reason: string | null
+    event: string | null
+    order_id: string | null
+    hash: string
+  }[]
 }
 
 export async function fetchAuditVerify(): Promise<AuditVerifyResponse> {
@@ -135,6 +142,7 @@ export async function fetchAuditVerify(): Promise<AuditVerifyResponse> {
 export interface BatchAttemptEvent {
   index: number
   order_id: string
+  amount: number
   method: string
   error_code: string
   cause_family: string

@@ -35,6 +35,7 @@ MODEL_DIR = Path(__file__).parent / "output"
 
 TRAIN_DAYS = 60
 VAL_DAYS = 15  # remaining days (of sim_config.yaml's window.days) become test
+RANDOM_SEED = 42  # matches sim_config.yaml's random_seed -- one seed, one story
 
 
 @dataclass(frozen=True)
@@ -47,6 +48,9 @@ class LabeledAttempt:
 
 
 def load_labeled_attempts() -> list[LabeledAttempt]:
+    """Join payment_attempts (Postgres) against the simulator's hidden
+    ground-truth JSONL by order_id, producing one labeled example per
+    failed attempt under its historically-assigned arm."""
     from app.db import SessionLocal
     from app.models import PaymentAttempt
 
@@ -97,6 +101,8 @@ def load_labeled_attempts() -> list[LabeledAttempt]:
 def chronological_split(
     attempts: list[LabeledAttempt], cfg: dict
 ) -> tuple[list[LabeledAttempt], list[LabeledAttempt], list[LabeledAttempt]]:
+    """Split by created_at, not randomly (CLAUDE.md non-negotiable #6):
+    first TRAIN_DAYS train, next VAL_DAYS validate, the remainder test."""
     window_start = datetime.fromisoformat(cfg["window"]["start"].replace("Z", "+00:00"))
     train_end = window_start + timedelta(days=TRAIN_DAYS)
     val_end = train_end + timedelta(days=VAL_DAYS)
@@ -115,12 +121,16 @@ def _fit(attempts: list[LabeledAttempt]) -> xgb.XGBClassifier:
         learning_rate=0.1,
         enable_categorical=True,
         eval_metric="logloss",
+        random_state=RANDOM_SEED,
     )
     model.fit(features, labels)
     return model
 
 
 def train(attempts: list[LabeledAttempt] | None = None, cfg: dict | None = None) -> dict[str, int]:
+    """Fit the T-learner's control and treated XGBoost models on a
+    chronological train split and pickle both to MODEL_DIR. Returns split
+    sizes for logging/reporting."""
     cfg = cfg or load_config()
     attempts = attempts if attempts is not None else load_labeled_attempts()
     train_set, val_set, test_set = chronological_split(attempts, cfg)
