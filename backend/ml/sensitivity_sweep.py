@@ -100,18 +100,23 @@ def _set_path(base_cfg: dict, path: tuple[str, ...], value: Any) -> dict:
 
 
 def override_outage_frequency(base_cfg: dict, value: float) -> dict:
+    """A copy of base_cfg with mean_days_between_outages set to value."""
     return _set_path(base_cfg, ("outage", "mean_days_between_outages"), value)
 
 
 def override_retry_cost(base_cfg: dict, value: float) -> dict:
+    """A copy of base_cfg with retry_cost_inr set to value."""
     return _set_path(base_cfg, ("retry_cost_inr",), value)
 
 
 def override_patience_decay(base_cfg: dict, value: float) -> dict:
+    """A copy of base_cfg with the per-attempt patience decay set to value."""
     return _set_path(base_cfg, ("patience_decay", "per_attempt_multiplier"), value)
 
 
 def override_decline_rate_multiplier(base_cfg: dict, value: float) -> dict:
+    """A copy of base_cfg with every method's base_decline_rate scaled by
+    value (capped at 0.95 so a large multiplier can't exceed 100%)."""
     cfg = copy.deepcopy(base_cfg)
     cfg["base_decline_rate"] = {
         method: min(rate * value, 0.95) for method, rate in cfg["base_decline_rate"].items()
@@ -144,6 +149,8 @@ SWEEP_PARAMS: dict[str, dict[str, Any]] = {
 
 
 def sweep_one(param_name: str, base_cfg: dict, n_attempts: int = SWEEP_N_ATTEMPTS) -> list[dict]:
+    """Run one scenario per value in SWEEP_PARAMS[param_name], varying only
+    that parameter. Returns [{"value": ..., "scores": ...}, ...]."""
     spec = SWEEP_PARAMS[param_name]
     results = []
     for value in spec["values"]:
@@ -157,6 +164,8 @@ def sweep_one(param_name: str, base_cfg: dict, n_attempts: int = SWEEP_N_ATTEMPT
 def sweep_grid(
     param_a: str, param_b: str, base_cfg: dict, n_attempts: int = SWEEP_N_ATTEMPTS
 ) -> list[list[dict]]:
+    """Run one scenario per (value_a, value_b) pair, varying both
+    parameters at once -- the heatmap's underlying grid."""
     spec_a, spec_b = SWEEP_PARAMS[param_a], SWEEP_PARAMS[param_b]
     grid = []
     for value_a in spec_a["values"]:
@@ -184,6 +193,8 @@ def _margin(scores: dict[str, PolicyScore]) -> float | None:
 
 
 def plot_sweeps(all_results: dict[str, list[dict]]) -> Path:
+    """Recovered INR vs. swept value, one subplot per parameter, one line
+    per policy. Writes sensitivity_sweeps.png and returns its path."""
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     fig, axes = plt.subplots(2, 2, figsize=(12, 9))
     for ax, (param_name, results) in zip(axes.flat, all_results.items(), strict=True):
@@ -208,6 +219,9 @@ def plot_sweeps(all_results: dict[str, list[dict]]) -> Path:
 
 
 def plot_heatmap(param_a: str, param_b: str, grid: list[list[dict]]) -> Path:
+    """uplift_ranked's % advantage over rule_based across the (param_a,
+    param_b) grid. Writes heatmap_{param_a}_x_{param_b}.png and returns
+    its path."""
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     spec_a, spec_b = SWEEP_PARAMS[param_a], SWEEP_PARAMS[param_b]
     margins = [[_margin(cell["scores"]) for cell in row] for row in grid]
@@ -272,6 +286,9 @@ def _results_to_json(all_results: dict[str, list[dict]], grid: list[list[dict]])
 
 
 def run() -> None:
+    """Phase 4: sweep every SWEEP_PARAMS entry, plot each, plot the
+    outage-frequency x base-decline-rate heatmap, and write results.json
+    for the dashboard."""
     base_cfg = load_config()
 
     all_results = {name: sweep_one(name, base_cfg) for name in SWEEP_PARAMS}
