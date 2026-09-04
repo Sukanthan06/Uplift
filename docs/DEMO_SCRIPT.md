@@ -19,8 +19,8 @@ of the retries. Say the thesis is already visible before any ML exists.
 
 **1:00–2:00 — The uplift model, honestly.** `python -m ml.train_uplift`,
 then the Phase 3 head-to-head table. Say the real number on camera: the
-model ties the hand-picked rule, doesn't beat it (−0.5%). Pivot immediately
-to `uplift@20%=0.76` and the rising Qini curve — the ranking is real signal,
+model ties the hand-picked rule, doesn't beat it (−1.6%). Pivot immediately
+to `uplift@20%=0.78` and the rising Qini curve — the ranking is real signal,
 just not enough yet to beat a good heuristic. This is the credibility beat;
 don't rush past it or soften it.
 
@@ -65,7 +65,7 @@ Also surface: double-charge near-misses (35, only on baselines that actually ret
 
 Scene: run `python -m ml.train_uplift` live — two XGBoost models fit in seconds, chronological split printed (4,438 train / 1,148 val / 1,107 held-out test, never touched during training). Then `python -c "from ml.evaluate import run_phase3; run_phase3()"` prints the Qini curve and the head-to-head table.
 
-Voiceover, honest version (this is the actual result, not a rehearsed win): at the same budget as the rule-based baseline, the learned model recovers ₹599,005 vs rule-based's ₹602,287 — essentially tied, a hair behind. Don't oversell it. Then pivot to what *does* show real signal: `uplift@20%` is 0.76 and the Qini curve rises steadily and stays positive across the whole ranking — the model has genuinely learned who's worth retrying, it just hasn't beaten a well-built hand-coded rule yet on this test slice. Say why, plainly: the rule already encodes the causal structure (skip hard declines, wait out outages, time insufficient-funds retries) that ~4,400 training examples can teach a model, and 1,107 held-out attempts is a small sample. This is the demo's credibility moment — CLAUDE.md's non-negotiable #7 says report wins and losses honestly, and this is the honest result.
+Voiceover, honest version (this is the actual result, not a rehearsed win): at the same budget as the rule-based baseline, the learned model recovers ₹592,384 vs rule-based's ₹602,287 — essentially tied, a hair behind. Don't oversell it. Then pivot to what *does* show real signal: `uplift@20%` is 0.78 and the Qini curve rises steadily and stays positive across the whole ranking — the model has genuinely learned who's worth retrying, it just hasn't beaten a well-built hand-coded rule yet on this test slice. Say why, plainly: the rule already encodes the causal structure (skip hard declines, wait out outages, time insufficient-funds retries) that ~4,400 training examples can teach a model, and 1,107 held-out attempts is a small sample. This is the demo's credibility moment — CLAUDE.md's non-negotiable #7 says report wins and losses honestly, and this is the honest result.
 
 Close the segment with the mechanism that's still real and demoable regardless of the head-to-head: `scorer.py` returns `uplift(now)` and `uplift(best_time)` for a single attempt, and `scheduler.py` turns that into an actual scheduled retry timestamp — show one example where the model picks "+24h" over "now" and explain why (issuer outage window, from the Phase 1 causal design).
 
