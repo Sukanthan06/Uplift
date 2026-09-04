@@ -5,6 +5,20 @@ The per-phase sections below are the full reference — everything that could
 be said. **For the actual recording, follow the timed cut immediately
 below** — narrating every phase section in full runs well past 5 minutes.
 
+**Dry-run timings (2026-09-04, live, real Groq/Postgres, fresh `docker compose down -v`):**
+`docker compose up` 11s · `simulator.generator` 3.3s · `ml.evaluate` 2.9s ·
+`ml.train_uplift` 21.8s · `run_phase3()` 3.0s · `app.demo_pipeline` (3 real
+attempts, the LLM/taxonomy disagreement, the 503 incident, tamper + both
+verify calls) 5.3s. All real compute across every scene except the
+sensitivity sweep totals well under a minute — the 5-minute cut's budget is
+almost entirely narration room, not command runtime. The sweep itself
+(Phase 4) is the one scene meant to be cut to its pre-rendered output per
+that section below, not run live on camera — it takes low minutes normally
+but has run anomalously long (~40min) at least once on this machine for
+reasons not fully diagnosed (host CPU contention, not a code regression;
+CPU usage during the slow run was consistent with genuine computation, not
+a hang). Don't attempt it live without a rehearsal first.
+
 ## The 5-minute cut (shooting order)
 
 **0:00–0:20 — Hook.** One sentence, on camera or as a title card: "Don't
