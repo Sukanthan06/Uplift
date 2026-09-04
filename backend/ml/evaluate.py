@@ -63,6 +63,10 @@ class PolicyScore:
 
 
 def load_attempts() -> list[AttemptRecord]:
+    """Join every failed payment_attempts row (Postgres) against the
+    simulator's hidden ground-truth JSONL by order_id, for scoring only --
+    never for training (see ml/train_uplift.py's load_labeled_attempts for
+    the training-time equivalent, which never touches p_recover_*)."""
     from app.db import SessionLocal
     from app.models import PaymentAttempt
 
@@ -126,6 +130,7 @@ def _as_feature_dict(attempt: AttemptRecord) -> dict[str, Any]:
 
 
 def load_models() -> tuple[xgb.XGBClassifier, xgb.XGBClassifier]:
+    """Unpickle the (control, treated) models train_uplift.py saved."""
     with (MODEL_DIR / "control_model.pkl").open("rb") as f:
         control_model = pickle.load(f)
     with (MODEL_DIR / "treated_model.pkl").open("rb") as f:
@@ -147,6 +152,10 @@ def _sequential_outcome(probabilities: list[float]) -> tuple[float, float]:
 
 
 def score_policy(attempts: list[AttemptRecord], plan_for: RetryPlan, cfg: dict) -> PolicyScore:
+    """Score a baseline policy (do_nothing/retry_once/retry_3x/rule_based)
+    against the hidden ground-truth curve: expected recovered INR, retries
+    spent, cost, and customer contacts, grading the policy's chosen action
+    after the fact -- never used to make the decision itself."""
     decay = cfg["patience_decay"]["per_attempt_multiplier"]
     retry_cost = cfg["retry_cost_inr"]
 
