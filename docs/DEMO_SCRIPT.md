@@ -97,7 +97,7 @@ If there's time, explain the harder case without demoing it live: a tamperer who
 
 ## Phase 7 — Dashboard
 
-Scene: open the running frontend (`localhost:5173`), single page, four tabs across the top — Overview, Batch Run, Decision Detail, Audit Verify. No page reloads switching between them; this is CLAUDE.md's "single page, no Next.js" literally.
+Scene: open the running frontend (`localhost:5173`), single page, a sidebar with four destinations — Overview, Batch Run, Decision Detail, Audit Verify. No page reloads switching between them; this is CLAUDE.md's "single page, no Next.js" literally.
 
 **Overview**: scroll through live. Simulator stats, then the Phase 2 baseline table, then Phase 3's table *with the uplift-ranked row* and its Qini curve, then Phase 4's four sensitivity sweeps and the outage-frequency × decline-rate heatmap — every number on this page is either a live DB query or a pre-computed artifact from the phases already demoed, nothing re-derived or faked for the dashboard.
 

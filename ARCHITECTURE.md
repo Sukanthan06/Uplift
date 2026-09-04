@@ -44,7 +44,7 @@ expensive on request.
 | Action service | `app/services/action_service.py`, `action_razorpay.py` | The only thing that talks to an external payment API. Idempotency key (`app/services/idempotency.py`) = `sha256(payment_id + action_type + scheduled_time + policy_version)`, checked against existing `actions` rows before ever calling out again. Max 2 retries on 5xx, exponential backoff, then a bounded `retry_exhausted` incident (written to the `incidents` table). Three interchangeable backends behind one `GatewayClient` protocol, selected via `ACTION_MODE`: `mock` (default, deterministic), `razorpay_test` (real HTTP to Razorpay's sandbox, test-key enforced), `off` (shadow — logs intent, calls nothing). | Mocked by default; real (sandbox) when `ACTION_MODE=razorpay_test` |
 | Audit | `app/services/audit.py`, `app/api/audit.py` | Hash-chained, tamper-*evident* log. `verify_chain()` is a pure function (no DB dependency) so tamper detection is unit-tested directly. | No |
 | Pipeline orchestrator | `app/services/pipeline.py` | Chains all of the above into one `run_pipeline()` call, persisting a row in every relevant table plus an audit event at every stage. Used by both the CLI demo script and the dashboard's live batch endpoint — one implementation. | Transitively (Groq, action service per `ACTION_MODE`) |
-| Dashboard | `frontend/src/` | Single page, four tabs, client-side tab switching (no router). Reads exclusively from the FastAPI backend. | No |
+| Dashboard | `frontend/src/` | Single page, sidebar with four destinations, client-side switching (no router). Reads exclusively from the FastAPI backend. | No |
 
 ## Data model
 

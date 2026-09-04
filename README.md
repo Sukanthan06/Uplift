@@ -193,6 +193,6 @@ Work happens on one branch per feature (`feat/`, `fix/`, `chore/`, `docs/` prefi
 | Database | PostgreSQL 16, SQLAlchemy 2.0, Alembic | Relational schema with a real foreign-key graph (attempts → reconciliations/diagnoses/decisions → actions); migrations tracked from the first table. |
 | ML | XGBoost (T-learner: two independent classifiers) | Two-model uplift estimation implemented directly rather than through a causal-ML framework, so the leakage boundary and the grading methodology are both auditable in this repo's own code. |
 | Inference | Groq (`openai/gpt-oss-120b`) | Structured-output LLM calls for failure classification only; swapped in for the originally planned vendor by explicit choice, see `docs/DECISIONS.md`. |
-| Frontend | React 18, Vite, Tailwind, Recharts | Single page, four tabs, no router — small enough surface area that client-side tab state is simpler than routing. |
+| Frontend | React 18, Vite, Tailwind, Recharts | Single page, sidebar with four destinations, no router — small enough surface area that client-side tab state is simpler than routing. |
 | HTTP client | httpx | The one dependency allowed to make a real external call, confined to a single file by an architecture test. |
 | Containers | Docker, Docker Compose | Three services (Postgres, backend, frontend), source bind-mounted for both app services so the container rebuilds only when a dependency changes. |
