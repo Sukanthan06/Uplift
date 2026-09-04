@@ -46,6 +46,7 @@ def _stream_batch(limit: int) -> Generator[str, None, None]:
                 {
                     "index": i,
                     "order_id": result.order_id,
+                    "amount": result.amount,
                     "method": result.method,
                     "error_code": result.error_code,
                     "cause_family": result.diagnosis_cause_family,
