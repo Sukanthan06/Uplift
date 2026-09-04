@@ -18,9 +18,7 @@ Payment failures aren't one problem, they're at least three: transient failures 
 
 **The value provided:** Uplift reframes the objective from "will this payment succeed if retried" to "does retrying this payment now create revenue that wouldn't otherwise exist" — the only question that matters commercially — and builds the full pipeline (reconciliation, LLM diagnosis, causal uplift scoring, deterministic policy gating, bounded action execution, tamper-evident audit) needed to act on that question safely.
 
-## 🧠 Team & Approach
-
-**Builder:** [Sukanthan06](https://github.com/Sukanthan06) — solo submission.
+## 🧠 Approach
 
 **Why this problem:** payment retry is a rare case where the "obviously correct" ML framing (predict success probability) is actually the wrong objective — optimizing for incremental revenue instead of raw retry success is a genuinely different, more defensible target, and one that's easy to get subtly wrong without a rigorous evaluation harness to catch it.
 
