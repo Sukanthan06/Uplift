@@ -86,16 +86,18 @@ The learned model ties, and narrowly loses to, the hand-picked rule (−1.6%) �
 
 ```mermaid
 flowchart TD
-    A[Failed payment] --> B[Reconciler]
+    SIM[Simulator] -->|bulk insert 50k attempts| G[(Postgres: 7 tables)]
+    G -->|"query: status = failed"| B[Reconciler]
     B -->|known-failed| C["Diagnoser (LLM)"]
     B -->|unknown status / silent success| S1[Skip: unknown status or silent success]
     C --> D["Scorer (Uplift Model)"]
-    D --> E["Policy Engine (calls Scheduler internally)"]
+    D --> SCHED[Scheduler]
+    SCHED --> E[Policy Engine]
     E -->|approved| F[Action Service]
     E -->|blocked| S2[Skip: policy blocked]
     F -->|success| SUCC[Success]
     F -->|budget exhausted| INC[Incident]
-    B --> G[(Postgres: 7 tables)]
+    B --> G
     C --> G
     E --> G
     F --> G
@@ -107,13 +109,13 @@ flowchart TD
     classDef service fill:#1e293b,stroke:#6366f1,stroke-width:1.5px,color:#e2e8f0;
     classDef terminal fill:#0f172a,stroke:#334155,stroke-width:1px,color:#94a3b8;
 
-    class A entry;
-    class B,C,D,E,F,INC service;
+    class SIM entry;
+    class B,C,D,SCHED,E,F,INC service;
     class S1,S2,SUCC,G,H,I terminal;
 
-    linkStyle 2,6,8 stroke:#ef4444,stroke-width:1.5px;
-    linkStyle 7 stroke:#22c55e,stroke-width:1.5px;
-    linkStyle 0,1,3,4,5,9,10,11,12,13,14,15 stroke:#334155,stroke-width:1.5px;
+    linkStyle 3,8,10 stroke:#ef4444,stroke-width:1.5px;
+    linkStyle 9 stroke:#22c55e,stroke-width:1.5px;
+    linkStyle 0,1,2,4,5,6,7,11,12,13,14,15,16,17 stroke:#334155,stroke-width:1.5px;
 ```
 
 The core principle: the probabilistic middle (diagnoser, scorer) is allowed to be wrong, because nothing it produces can directly move money. The policy engine and action service are not models — a rules file and a bounded HTTP client — and everything that touches an external system or a retry decision passes through one of the two. See [`ARCHITECTURE.md`](ARCHITECTURE.md) for the full component breakdown and data model.
