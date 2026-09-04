@@ -10,16 +10,18 @@ auditable, and honest.
 
 ```mermaid
 flowchart TD
-    A[Failed payment] --> B[Reconciler]
+    SIM[Simulator] -->|bulk insert 50k attempts| G[(Postgres: 7 tables)]
+    G -->|"query: status = failed"| B[Reconciler]
     B -->|known-failed| C["Diagnoser (LLM)"]
     B -->|unknown status / silent success| S1[Skip: unknown status or silent success]
     C --> D["Scorer (Uplift Model)"]
-    D --> E["Policy Engine (calls Scheduler internally)"]
+    D --> SCHED[Scheduler]
+    SCHED --> E[Policy Engine]
     E -->|approved| F[Action Service]
     E -->|blocked| S2[Skip: policy blocked]
     F -->|success| SUCC[Success]
     F -->|budget exhausted| INC[Incident]
-    B --> G[(Postgres: 7 tables)]
+    B --> G
     C --> G
     E --> G
     F --> G
@@ -31,16 +33,18 @@ flowchart TD
     classDef service fill:#1e293b,stroke:#6366f1,stroke-width:1.5px,color:#e2e8f0;
     classDef terminal fill:#0f172a,stroke:#334155,stroke-width:1px,color:#94a3b8;
 
-    class A entry;
-    class B,C,D,E,F,INC service;
+    class SIM entry;
+    class B,C,D,SCHED,E,F,INC service;
     class S1,S2,SUCC,G,H,I terminal;
 
-    linkStyle 2,6,8 stroke:#ef4444,stroke-width:1.5px;
-    linkStyle 7 stroke:#22c55e,stroke-width:1.5px;
-    linkStyle 0,1,3,4,5,9,10,11,12,13,14,15 stroke:#334155,stroke-width:1.5px;
+    linkStyle 3,8,10 stroke:#ef4444,stroke-width:1.5px;
+    linkStyle 9 stroke:#22c55e,stroke-width:1.5px;
+    linkStyle 0,1,2,4,5,6,7,11,12,13,14,15,16,17 stroke:#334155,stroke-width:1.5px;
 ```
 
-The two skip paths are different mechanisms, not one generic "declined" state: the reconciler's skip fires when a payment's true status can't be confirmed known-failed (no retry decision is ever made against an unknown status); the policy engine's skip fires when a known-failed, diagnosed, positively-scored attempt still gets blocked by a deterministic rule (a hard decline family, low diagnosis confidence). `Scheduler` (`app/services/scheduler.py`) is not a separate pipeline stage — `policy_engine.decide()` calls `schedule()` internally as part of its own decision, which is why it's drawn folded into the Policy Engine box rather than as its own node.
+The two skip paths are different mechanisms, not one generic "declined" state: the reconciler's skip fires when a payment's true status can't be confirmed known-failed (no retry decision is ever made against an unknown status); the policy engine's skip fires when a known-failed, diagnosed, positively-scored attempt still gets blocked by a deterministic rule (a hard decline family, low diagnosis confidence). `Scheduler` (`app/services/scheduler.py`) is drawn as its own node because it's a genuinely separate module in the codebase — but at runtime it isn't invoked as an independent pipeline step: `policy_engine.decide()` calls `schedule()` internally as part of its own decision, `pipeline.py` never calls it directly. The diagram shows the logical data flow (Scorer's output feeds Scheduler's timing decision, which feeds the policy gate); the actual call graph nests Scheduler inside Policy Engine.
+
+The Simulator writes its 50,000-attempt population into Postgres once, as a batch job (`python -m simulator.generator`) — it does not feed the pipeline directly or in real time. Every later pipeline run (the CLI demo script, or the dashboard's Batch Run) separately queries Postgres for attempts with `status = 'failed'` and processes them one at a time starting at the Reconciler. There is no webhook receiver in this build; "receives failed payment events" in the one-paragraph thesis describes the intended production entry point, not something implemented here — see *Production path* below.
 
 Every arrow into Postgres also writes an `audit_log` entry. The dashboard
 reads only from Postgres and from two backend-produced artifacts (trained
@@ -129,6 +133,10 @@ this project doesn't have.
 | Gateway status lookup (reconciler) | — | Mocked, but not arbitrarily — resolves from the simulator's own hidden ground truth for timeout-ambiguous codes, so it answers the way a real gateway honestly would |
 | Payment retry API (action_service) | Real, when `ACTION_MODE=razorpay_test` — genuine sandbox HTTP calls, verified live | Default (`ACTION_MODE=mock`); a deliberately-503 client exists specifically to demo the retry-exhausted incident path |
 | Audit chain | Real hash-chained Postgres writes, real tamper detection | — |
+
+## Production path
+
+This build reads pre-generated attempts back out of Postgres by batch query, not by live event; a production deployment would replace that entry point with a real webhook receiver that pushes each failed-payment event into the same Reconciler-first pipeline as it happens.
 
 ## Where to go next in the docs
 
