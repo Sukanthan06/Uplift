@@ -13,5 +13,6 @@ import hashlib
 def build_idempotency_key(
     payment_id: str, action_type: str, scheduled_time: str, policy_version: str
 ) -> str:
+    """sha256 of the four fields concatenated, per CLAUDE.md's own formula."""
     raw = f"{payment_id}{action_type}{scheduled_time}{policy_version}"
     return hashlib.sha256(raw.encode()).hexdigest()

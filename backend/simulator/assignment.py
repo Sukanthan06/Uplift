@@ -35,6 +35,8 @@ def _uniform_from_hash(key: str) -> float:
 def assign_treatment(
     order_id: str, arms: tuple[str, ...] = ARMS, salt: str = "uplift-assignment-v2"
 ) -> TreatmentAssignment:
+    """Deterministically hash order_id into a uniform draw and map it onto
+    one of arms -- same order_id always recomputes the same assignment."""
     draw = _uniform_from_hash(f"{salt}:{order_id}")
     idx = min(int(draw * len(arms)), len(arms) - 1)
     return TreatmentAssignment(

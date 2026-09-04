@@ -16,16 +16,19 @@ network request. Nothing here feeds the uplift model.
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
+from app.logging import get_logger
 from simulator import taxonomy
 
 GROUND_TRUTH_PATH = (
     Path(__file__).resolve().parents[2] / "simulator" / "output" / "ground_truth.jsonl"
 )
+
+logger = get_logger(__name__)
 
 
 @dataclass(frozen=True)
@@ -49,11 +52,18 @@ def _ground_truth_by_order() -> dict[str, dict[str, Any]]:
 def reconcile(attempt: dict[str, Any]) -> ReconciliationResult:
     """attempt must carry order_id, error_code. Always call this before any
     retry decision -- see policy_engine.decide()."""
-    if attempt["error_code"] not in taxonomy.TIMEOUT_AMBIGUOUS_CODES:
-        return ReconciliationResult(gateway_reported_status="failed", is_known_failed=True)
+    order_id = attempt["order_id"]
+    error_code = attempt["error_code"]
+    logger.info("reconcile_started", order_id=order_id, error_code=error_code)
 
-    ground_truth = _ground_truth_by_order().get(attempt["order_id"])
-    if ground_truth is not None and ground_truth.get("actually_succeeded_silently"):
-        return ReconciliationResult(gateway_reported_status="success", is_known_failed=False)
+    if error_code not in taxonomy.TIMEOUT_AMBIGUOUS_CODES:
+        result = ReconciliationResult(gateway_reported_status="failed", is_known_failed=True)
+    else:
+        ground_truth = _ground_truth_by_order().get(order_id)
+        if ground_truth is not None and ground_truth.get("actually_succeeded_silently"):
+            result = ReconciliationResult(gateway_reported_status="success", is_known_failed=False)
+        else:
+            result = ReconciliationResult(gateway_reported_status="failed", is_known_failed=True)
 
-    return ReconciliationResult(gateway_reported_status="failed", is_known_failed=True)
+    logger.info("reconcile_finished", order_id=order_id, **asdict(result))
+    return result

@@ -11,11 +11,14 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
 
+from app.logging import get_logger
 from app.models import Decision, Diagnosis, PaymentAttempt, Reconciliation
 from app.services import action_service, audit, policy_engine, reconciler
 from app.services.diagnoser import diagnose as diagnose_attempt
 from app.services.scorer import score as score_attempt
 from simulator import taxonomy
+
+logger = get_logger(__name__)
 
 
 @dataclass(frozen=True)
@@ -54,9 +57,27 @@ def _attempt_dict(row: PaymentAttempt) -> dict[str, Any]:
 
 
 def run_pipeline(row: PaymentAttempt) -> PipelineResult:
-    from app.db import SessionLocal
-
+    """Run one failed payment attempt through the full reconciler ->
+    diagnoser -> scorer -> policy_engine -> action_service chain,
+    persisting a row at every stage plus an audit_log entry each time."""
     attempt = _attempt_dict(row)
+    logger.info("pipeline_started", order_id=row.order_id, error_code=row.error_code)
+    try:
+        result = _run_pipeline_stages(row, attempt)
+    except Exception:
+        logger.error("pipeline_failed", order_id=row.order_id, exc_info=True)
+        raise
+    logger.info(
+        "pipeline_finished",
+        order_id=row.order_id,
+        chosen_action=result.chosen_action,
+        action_outcome=result.action_outcome,
+    )
+    return result
+
+
+def _run_pipeline_stages(row: PaymentAttempt, attempt: dict[str, Any]) -> PipelineResult:
+    from app.db import SessionLocal
 
     recon = reconciler.reconcile(attempt)
     session = SessionLocal()

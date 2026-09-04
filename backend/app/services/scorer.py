@@ -18,9 +18,12 @@ from typing import Any
 
 import xgboost as xgb
 
+from app.logging import get_logger
 from ml.features import build_features, to_dataframe
 from ml.train_uplift import MODEL_DIR
 from simulator.generator import load_config
+
+logger = get_logger(__name__)
 
 
 @dataclass(frozen=True)
@@ -43,6 +46,7 @@ def score(attempt: dict[str, Any]) -> UpliftScore:
     """attempt must be a payment_attempts-shaped record (see
     ml/features.py). Returns uplift at offset 0h and at whichever candidate
     offset the model predicts is best."""
+    logger.info("score_started", order_id=attempt.get("order_id"))
     control_model, treated_model = _load_models()
     offsets_hours = load_config()["retry_offsets_hours"]
 
@@ -56,8 +60,16 @@ def score(attempt: dict[str, Any]) -> UpliftScore:
     uplift_per_offset = p_treated - p_control
     best_idx = int(uplift_per_offset.argmax())
 
-    return UpliftScore(
+    result = UpliftScore(
         uplift_now=float(uplift_per_offset[0]),
         uplift_best=float(uplift_per_offset[best_idx]),
         best_offset_hours=offsets_hours[best_idx],
     )
+    logger.info(
+        "score_finished",
+        order_id=attempt.get("order_id"),
+        uplift_now=result.uplift_now,
+        uplift_best=result.uplift_best,
+        best_offset_hours=result.best_offset_hours,
+    )
+    return result
