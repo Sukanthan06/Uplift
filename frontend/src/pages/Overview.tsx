@@ -13,6 +13,7 @@ import { categorical, diverging, ink, policyColor } from '../colors'
 import { formatNumber, formatPct } from '../format'
 import PolicyTable from '../components/PolicyTable'
 import SectionCard from '../components/SectionCard'
+import { OverviewSkeleton } from '../components/Skeleton'
 import StatTile from '../components/StatTile'
 
 const BASELINE_ORDER = ['do_nothing', 'retry_once', 'retry_3x', 'rule_based', 'uplift_ranked']
@@ -50,7 +51,7 @@ export default function Overview() {
     return <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">{error}</div>
   }
   if (!data) {
-    return <div className="text-sm text-gray-500">Loading...</div>
+    return <OverviewSkeleton />
   }
 
   const heatmapBound = Math.max(
